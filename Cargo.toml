@@ -4,6 +4,7 @@ description = "A Rust client for the Baserow API."
 version = "0.1.1"
 edition = "2021"
 categories = ["baserow", "api", "client"]
+license = "Apache-2.0"
 
 [dependencies]
 reqwest = { version = "0.12.9", features = ["json"] }
