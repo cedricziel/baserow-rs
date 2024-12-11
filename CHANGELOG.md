@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/cedricziel/baserow-rs/compare/v0.1.1...v0.1.2) (2024-12-11)
+
+
+### Bug Fixes
+
+* set license ([b34cf14](https://github.com/cedricziel/baserow-rs/commit/b34cf1453754105133849353b70a5b7b03019118))
+
 ## [0.1.1](https://github.com/cedricziel/baserow-rs/compare/v0.1.0...v0.1.1) (2024-12-11)
 
 
