@@ -350,6 +350,6 @@ mod tests {
             jwt: None,
         };
         let baserow = Baserow::with_configuration(configuration);
-        let table = baserow.table_by_id(1234);
+        let _table = baserow.table_by_id(1234);
     }
 }
