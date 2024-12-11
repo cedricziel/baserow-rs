@@ -1,6 +1,7 @@
 use std::{collections::HashMap, error::Error, fmt::Display, fs::File};
 
 use api::table::{RowRequestBuilder, RowsResponse};
+use reqwest::header::AUTHORIZATION;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -151,12 +152,35 @@ impl BaserowTable {
     pub async fn create_one(
         self,
         data: HashMap<String, Value>,
-    ) -> Result<RowsResponse, Box<dyn Error>> {
-        todo!()
-    }
+    ) -> Result<HashMap<String, Value>, Box<dyn Error>> {
+        let baserow = self.baserow.expect("Baserow instance is missing");
 
-    pub async fn create_many(self, data: Vec<HashMap<String, Value>>) -> RowsResponse {
-        todo!()
+        let url = format!(
+            "{}/api/database/rows/table/{}/",
+            &baserow.configuration.base_url,
+            self.id.unwrap()
+        );
+
+        let mut req = reqwest::Client::new().post(url);
+
+        if baserow.configuration.jwt.is_some() {
+            req = req.header(
+                AUTHORIZATION,
+                format!("JWT {}", &baserow.configuration.api_key.unwrap()),
+            );
+        } else if baserow.configuration.api_key.is_some() {
+            req = req.header(
+                AUTHORIZATION,
+                format!("Token {}", &baserow.configuration.api_key.unwrap()),
+            );
+        }
+
+        let resp = req.json(&data).send().await?;
+
+        match resp.status() {
+            reqwest::StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
+            _ => Err(Box::new(resp.error_for_status().unwrap_err())),
+        }
     }
 
     pub async fn update(
