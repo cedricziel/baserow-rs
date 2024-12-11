@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.3](https://github.com/cedricziel/baserow-rs/compare/v0.1.2...v0.1.3) (2024-12-11)
+
+
+### Bug Fixes
+
+* add cargo publishing ([1a78b0f](https://github.com/cedricziel/baserow-rs/commit/1a78b0fbfa1b24dd29fb78b0dd8f33e6c059e516))
+* add categories ([f62f777](https://github.com/cedricziel/baserow-rs/commit/f62f7770bb86796efb08b98ec3e9a3e843b6b330))
+* more info in the Cargo file ([33d566d](https://github.com/cedricziel/baserow-rs/commit/33d566d449bd7f127e9ffce048da59b65842ec8f))
+
 ## [0.1.2](https://github.com/cedricziel/baserow-rs/compare/v0.1.1...v0.1.2) (2024-12-11)
 
 
