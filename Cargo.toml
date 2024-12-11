@@ -2,11 +2,11 @@
 name = "baserow-rs"
 description = "A Rust client for the Baserow API."
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 categories = ["baserow", "api", "client"]
 
 [dependencies]
-reqwest = {version = "0.12.9", features = ["json"]}
+reqwest = { version = "0.12.9", features = ["json"] }
 serde = { version = "1.0.215", features = ["derive"] }
 serde_json = "1.0.133"
 
