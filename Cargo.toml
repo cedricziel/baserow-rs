@@ -3,7 +3,7 @@ name = "baserow-rs"
 description = "A Rust client for the Baserow API."
 version = "0.1.2"
 edition = "2021"
-categories = ["baserow", "api", "client"]
+categories = ["database"]
 license = "Apache-2.0"
 
 [dependencies]
