@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/cedricziel/baserow-rs/compare/v0.1.4...v0.2.0) (2024-12-11)
+
+
+### Features
+
+* add ability to create a record ([0efc9d0](https://github.com/cedricziel/baserow-rs/commit/0efc9d053eeb2c63d8ed1533031b676c2302511a))
+
 ## [0.1.4](https://github.com/cedricziel/baserow-rs/compare/v0.1.3...v0.1.4) (2024-12-11)
 
 
