@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/cedricziel/baserow-rs/compare/v0.1.0...v0.1.1) (2024-12-11)
+
+
+### Bug Fixes
+
+* add example ([72a6ea2](https://github.com/cedricziel/baserow-rs/commit/72a6ea2ec5efd7d7a74be74a9bea637652229c8f))
+
 ## 0.1.0 (2024-12-11)
 
 
