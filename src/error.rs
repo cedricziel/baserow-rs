@@ -19,3 +19,15 @@ pub enum TokenAuthError {
     #[error("Network error: {0}")]
     NetworkError(#[from] reqwest::Error),
 }
+
+#[derive(Debug, thiserror::Error)]
+pub enum FileUploadError {
+    #[error("File read error: {0}")]
+    FileReadError(#[from] std::io::Error),
+    #[error("Upload failed: {0}")]
+    UploadError(#[from] reqwest::Error),
+    #[error("Invalid content type")]
+    InvalidContentType,
+    #[error("Unexpected status code: {0}")]
+    UnexpectedStatusCode(reqwest::StatusCode),
+}

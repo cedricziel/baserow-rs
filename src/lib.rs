@@ -4,7 +4,7 @@ use api::{
     authentication::{LoginRequest, TokenResponse, User},
     table::RowRequestBuilder,
 };
-use error::TokenAuthError;
+use error::{FileUploadError, TokenAuthError};
 use reqwest::{header::AUTHORIZATION, multipart, Body, Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -187,7 +187,7 @@ impl Baserow {
             .with_baserow(self.clone())
     }
 
-    pub async fn upload_file(&self, file: File) -> Result<api::file::File, Box<dyn Error>> {
+    pub async fn upload_file(&self, file: File) -> Result<api::file::File, FileUploadError> {
         let url = format!(
             "{}/api/user-files/upload-file/",
             &self.configuration.base_url
@@ -211,14 +211,17 @@ impl Baserow {
             req = req.header(AUTHORIZATION, format!("Token {}", api_key));
         }
 
-        let resp = req.multipart(form).send().await?;
+        let resp = req.multipart(form).send().await;
 
-        match resp.status() {
-            StatusCode::OK => {
-                let json: api::file::File = resp.json().await?;
-                Ok(json)
-            }
-            _ => Err(Box::new(resp.error_for_status().unwrap_err())),
+        match resp {
+            Ok(resp) => match resp.status() {
+                StatusCode::OK => {
+                    let json: api::file::File = resp.json().await?;
+                    Ok(json)
+                }
+                _ => Err(FileUploadError::UnexpectedStatusCode(resp.status())),
+            },
+            Err(e) => Err(FileUploadError::UploadError(e)),
         }
     }
 
