@@ -581,9 +581,7 @@ mod tests {
         mock.assert();
     }
 
-    /*************  ✨ Codeium Command ⭐  *************/
-    /// Tests the `delete` function of the `BaserowTable` struct to ensure it can
-    /******  b32d9f4b-f082-49c5-9a79-351e45da34c0  *******/
+/// Tests the `delete` function of the `BaserowTable` struct to ensure it can delete a record successfully.
     #[tokio::test]
     async fn test_delete_record() {
         let mut server = mockito::Server::new_async().await;
