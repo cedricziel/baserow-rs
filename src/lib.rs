@@ -1,6 +1,9 @@
 use std::{collections::HashMap, error::Error, fs::File};
 
-use api::table::RowRequestBuilder;
+use api::{
+    authentication::{LoginRequest, TokenAuthErrorResponse, TokenResponse, User},
+    table::RowRequestBuilder,
+};
 use reqwest::{header::AUTHORIZATION, multipart, Body, Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -8,13 +11,21 @@ use tokio_util::codec::{BytesCodec, FramedRead};
 
 mod api;
 
+pub mod error;
+
 #[derive(Clone)]
 pub struct Configuration {
     base_url: String,
-    api_key: Option<String>,
+
     email: Option<String>,
     password: Option<String>,
     jwt: Option<String>,
+
+    database_token: Option<String>,
+    access_token: Option<String>,
+    refresh_token: Option<String>,
+
+    user: Option<User>,
 }
 
 #[derive(Default)]
@@ -60,11 +71,16 @@ impl ConfigBuilder {
     pub fn build(self) -> Configuration {
         Configuration {
             base_url: self.base_url.unwrap(),
-            api_key: self.api_key,
 
             email: self.email,
             password: self.password,
             jwt: None,
+
+            database_token: self.api_key,
+            access_token: None,
+            refresh_token: None,
+
+            user: None,
         }
     }
 }
@@ -79,30 +95,59 @@ impl Baserow {
         Self { configuration }
     }
 
-    pub fn with_token(self, token: String) -> Self {
+    pub fn with_database_token(self, token: String) -> Self {
         let mut configuration = self.configuration.clone();
-        configuration.jwt = Some(token);
+        configuration.database_token = Some(token);
 
         Self { configuration }
     }
 
-    pub async fn login(&self) -> Result<Baserow, Box<dyn Error>> {
-        let url = format!("{}/api/auth/token/", &self.configuration.base_url);
-        let form = [
-            ("email", self.configuration.email.clone().unwrap()),
-            ("password", self.configuration.password.clone().unwrap()),
-        ];
+    fn with_access_token(&self, access_token: String) -> Self {
+        let mut configuration = self.configuration.clone();
+        configuration.access_token = Some(access_token);
 
-        let req = Client::new().post(url).form(&form);
+        Self { configuration }
+    }
+
+    fn with_refresh_token(&self, refresh_token: String) -> Self {
+        let mut configuration = self.configuration.clone();
+        configuration.refresh_token = Some(refresh_token);
+
+        Self { configuration }
+    }
+
+    fn with_user(&self, user: User) -> Self {
+        let mut configuration = self.configuration.clone();
+        configuration.user = Some(user);
+
+        Self { configuration }
+    }
+
+    /// Authenticates an existing user based on their email and their password.
+    /// If successful, an access token and a refresh token will be returned.
+    pub async fn token_auth(&self) -> Result<Baserow, Box<dyn Error>> {
+        let url = format!("{}/api/user/token-auth/", &self.configuration.base_url);
+
+        let auth_request = LoginRequest {
+            email: self.configuration.email.clone().unwrap(),
+            password: self.configuration.password.clone().unwrap(),
+        };
+
+        let req = Client::new().post(url).json(&auth_request);
 
         let resp = req.send().await?;
 
         match resp.status() {
             StatusCode::OK => {
-                let token = resp.text().await?;
-                println!("Token: {}", token);
-                Ok(self.clone().with_token(token))
+                let token_response: TokenResponse = resp.json().await?;
+                Ok(self
+                    .clone()
+                    .with_database_token(token_response.token)
+                    .with_access_token(token_response.access_token)
+                    .with_refresh_token(token_response.refresh_token)
+                    .with_user(token_response.user))
             }
+            StatusCode::UNAUTHORIZED => Err(Box::new(resp.error_for_status().unwrap_err())),
             _ => Err(Box::new(resp.error_for_status().unwrap_err())),
         }
     }
@@ -114,7 +159,7 @@ impl Baserow {
             .with_baserow(self.clone())
     }
 
-    async fn upload_file(&self, file: File) -> Result<api::file::File, Box<dyn Error>> {
+    pub async fn upload_file(&self, file: File) -> Result<api::file::File, Box<dyn Error>> {
         let url = format!(
             "{}/api/user-files/upload-file/",
             &self.configuration.base_url
@@ -134,7 +179,7 @@ impl Baserow {
 
         if let Some(token) = &self.configuration.jwt {
             req = req.header(AUTHORIZATION, format!("JWT {}", token));
-        } else if let Some(api_key) = &self.configuration.api_key {
+        } else if let Some(api_key) = &self.configuration.database_token {
             req = req.header(AUTHORIZATION, format!("Token {}", api_key));
         }
 
@@ -149,7 +194,7 @@ impl Baserow {
         }
     }
 
-    async fn upload_file_via_url(&self, url: &str) -> Result<api::file::File, Box<dyn Error>> {
+    pub async fn upload_file_via_url(&self, url: &str) -> Result<api::file::File, Box<dyn Error>> {
         let file_url = url.to_string();
 
         let upload_request = api::file::UploadFileViaUrlRequest {
@@ -157,7 +202,7 @@ impl Baserow {
         };
 
         let url = format!(
-            "{}/api/user-files/upload-file-from-url/",
+            "{}/api/user-files/upload-via-url/",
             &self.configuration.base_url
         );
 
@@ -165,7 +210,7 @@ impl Baserow {
 
         if let Some(token) = &self.configuration.jwt {
             req = req.header(AUTHORIZATION, format!("JWT {}", token));
-        } else if let Some(api_key) = &self.configuration.api_key {
+        } else if let Some(api_key) = &self.configuration.database_token {
             req = req.header(AUTHORIZATION, format!("Token {}", api_key));
         }
 
@@ -231,10 +276,10 @@ impl BaserowTable {
                 AUTHORIZATION,
                 format!("JWT {}", &baserow.configuration.jwt.unwrap()),
             );
-        } else if baserow.configuration.api_key.is_some() {
+        } else if baserow.configuration.database_token.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.api_key.unwrap()),
+                format!("Token {}", &baserow.configuration.database_token.unwrap()),
             );
         }
 
@@ -263,10 +308,10 @@ impl BaserowTable {
                 AUTHORIZATION,
                 format!("JWT {}", &baserow.configuration.jwt.unwrap()),
             );
-        } else if baserow.configuration.api_key.is_some() {
+        } else if baserow.configuration.database_token.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.api_key.unwrap()),
+                format!("Token {}", &baserow.configuration.database_token.unwrap()),
             );
         }
 
@@ -299,10 +344,10 @@ impl BaserowTable {
                 AUTHORIZATION,
                 format!("JWT {}", &baserow.configuration.jwt.unwrap()),
             );
-        } else if baserow.configuration.api_key.is_some() {
+        } else if baserow.configuration.database_token.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.api_key.unwrap()),
+                format!("Token {}", &baserow.configuration.database_token.unwrap()),
             );
         }
 
@@ -331,10 +376,10 @@ impl BaserowTable {
                 AUTHORIZATION,
                 format!("JWT {}", &baserow.configuration.jwt.unwrap()),
             );
-        } else if baserow.configuration.api_key.is_some() {
+        } else if baserow.configuration.database_token.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.api_key.unwrap()),
+                format!("Token {}", &baserow.configuration.database_token.unwrap()),
             );
         }
 
@@ -513,18 +558,19 @@ pub struct FilterTriple {
 
 #[cfg(test)]
 mod tests {
-    use mockito::Server;
-
     use super::*;
 
     #[test]
     fn test() {
         let configuration = Configuration {
             base_url: "https://baserow.io".to_string(),
-            api_key: Some("123".to_string()),
+            database_token: Some("123".to_string()),
             email: None,
             password: None,
             jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
         };
         let baserow = Baserow::with_configuration(configuration);
         let _table = baserow.table_by_id(1234);
@@ -545,10 +591,13 @@ mod tests {
 
         let configuration = Configuration {
             base_url: mock_url,
-            api_key: Some("123".to_string()),
+            database_token: Some("123".to_string()),
             email: None,
             password: None,
             jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
         };
         let baserow = Baserow::with_configuration(configuration);
         let table = baserow.table_by_id(1234);
@@ -580,10 +629,13 @@ mod tests {
 
         let configuration = Configuration {
             base_url: mock_url,
-            api_key: Some("123".to_string()),
+            database_token: Some("123".to_string()),
             email: None,
             password: None,
             jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
         };
         let baserow = Baserow::with_configuration(configuration);
         let table = baserow.table_by_id(1234);
@@ -613,10 +665,13 @@ mod tests {
 
         let configuration = Configuration {
             base_url: mock_url,
-            api_key: Some("123".to_string()),
+            database_token: Some("123".to_string()),
             email: None,
             password: None,
             jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
         };
         let baserow = Baserow::with_configuration(configuration);
         let table = baserow.table_by_id(1234);
@@ -650,16 +705,174 @@ mod tests {
 
         let configuration = Configuration {
             base_url: mock_url,
-            api_key: Some("123".to_string()),
+            database_token: Some("123".to_string()),
             email: None,
             password: None,
             jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
         };
         let baserow = Baserow::with_configuration(configuration);
         let table = baserow.table_by_id(1234);
 
         let result = table.delete(5678).await;
         assert!(result.is_ok());
+
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_upload_file_via_url() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let mock = server
+            .mock("POST", "/api/user-files/upload-via-url/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_header(AUTHORIZATION, format!("Token {}", "123").as_str())
+            .with_body(r#"{
+    "url": "https://files.baserow.io/user_files/VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png",
+    "thumbnails": {
+        "tiny": {
+            "url": "https://files.baserow.io/media/thumbnails/tiny/VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png",
+            "width": 21,
+            "height": 21
+        },
+        "small": {
+            "url": "https://files.baserow.io/media/thumbnails/small/VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png",
+            "width": 48,
+            "height": 48
+        }
+    },
+    "name": "VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png",
+    "size": 229940,
+    "mime_type": "image/png",
+    "is_image": true,
+    "image_width": 1280,
+    "image_height": 585,
+    "uploaded_at": "2020-11-17T12:16:10.035234+00:00"
+}"#)
+            .create();
+
+        let configuration = Configuration {
+            base_url: mock_url,
+            database_token: Some("123".to_string()),
+            email: None,
+            password: None,
+            jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
+        };
+        let baserow = Baserow::with_configuration(configuration);
+
+        let result = baserow
+            .upload_file_via_url("https://example.com/test.txt")
+            .await;
+        assert!(result.is_ok());
+
+        let uploaded_file = result.unwrap();
+        assert_eq!(uploaded_file.name, "VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png".to_string());
+
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_token_auth() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let mock = server
+            .mock("POST", "/api/user/token-auth/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(
+                r#"{
+  "user": {
+    "first_name": "string",
+    "username": "user@example.com",
+    "language": "string"
+  },
+  "token": "string",
+  "access_token": "string",
+  "refresh_token": "string"
+}"#,
+            )
+            .create();
+
+        let configuration = ConfigBuilder::new()
+            .base_url(&mock_url)
+            .email("test@example.com")
+            .password("password")
+            .build();
+        let baserow = Baserow::with_configuration(configuration);
+
+        let result = baserow.token_auth().await;
+        assert!(result.is_ok());
+
+        let logged_in_baserow = result.unwrap();
+        assert_eq!(
+            logged_in_baserow.configuration.database_token.unwrap(),
+            "string"
+        );
+
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_upload_file() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let mock = server
+            .mock("POST", "/api/user-files/upload-file/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_header(AUTHORIZATION, format!("Token {}", "123").as_str())
+            .with_body(r#"{
+    "url": "https://files.baserow.io/user_files/VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png",
+    "thumbnails": {
+        "tiny": {
+            "url": "https://files.baserow.io/media/thumbnails/tiny/VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png",
+            "width": 21,
+            "height": 21
+        },
+        "small": {
+            "url": "https://files.baserow.io/media/thumbnails/small/VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png",
+            "width": 48,
+            "height": 48
+        }
+    },
+    "name": "VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png",
+    "size": 229940,
+    "mime_type": "image/png",
+    "is_image": true,
+    "image_width": 1280,
+    "image_height": 585,
+    "uploaded_at": "2020-11-17T12:16:10.035234+00:00"
+}"#)
+            .create();
+
+        let configuration = Configuration {
+            base_url: mock_url,
+            database_token: Some("123".to_string()),
+            email: None,
+            password: None,
+            jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
+        };
+        let baserow = Baserow::with_configuration(configuration);
+
+        let file = File::open(".gitignore").unwrap();
+        let result = baserow.upload_file(file).await;
+        assert!(result.is_ok());
+
+        let uploaded_file = result.unwrap();
+        assert_eq!(uploaded_file.name, "VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png".to_string());
 
         mock.assert();
     }

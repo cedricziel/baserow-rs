@@ -1,6 +1,6 @@
 use std::{collections::HashMap, env};
 
-use baserow_rs::{Baserow, ConfigBuilder, Filter, OrderDirection};
+use baserow_rs::{Baserow, ConfigBuilder};
 use serde_json::Value;
 
 #[tokio::main]
