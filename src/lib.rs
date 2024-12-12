@@ -1,9 +1,10 @@
 use std::{collections::HashMap, error::Error, fs::File};
 
-use api::table::{RowRequestBuilder, RowsResponse};
-use reqwest::header::AUTHORIZATION;
+use api::table::RowRequestBuilder;
+use reqwest::{header::AUTHORIZATION, multipart, Body, Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tokio_util::codec::{BytesCodec, FramedRead};
 
 mod api;
 
@@ -92,12 +93,12 @@ impl Baserow {
             ("password", self.configuration.password.clone().unwrap()),
         ];
 
-        let req = reqwest::Client::new().post(url).form(&form);
+        let req = Client::new().post(url).form(&form);
 
         let resp = req.send().await?;
 
         match resp.status() {
-            reqwest::StatusCode::OK => {
+            StatusCode::OK => {
                 let token = resp.text().await?;
                 println!("Token: {}", token);
                 Ok(self.clone().with_token(token))
@@ -113,9 +114,71 @@ impl Baserow {
             .with_baserow(self.clone())
     }
 
-    fn upload_file(&self, file: File) {}
+    async fn upload_file(&self, file: File) -> Result<api::file::File, Box<dyn Error>> {
+        let url = format!(
+            "{}/api/user-files/upload-file/",
+            &self.configuration.base_url
+        );
 
-    fn upload_file_via_url(&self, url: &str) {}
+        let file = tokio::fs::File::from_std(file);
+        let stream = FramedRead::new(file, BytesCodec::new());
+        let file_body = Body::wrap_stream(stream);
+
+        let file_part = multipart::Part::stream(file_body)
+            .file_name("gitignore.txt")
+            .mime_str("text/plain")?;
+
+        let form = reqwest::multipart::Form::new().part("file", file_part);
+
+        let mut req = Client::new().post(url);
+
+        if let Some(token) = &self.configuration.jwt {
+            req = req.header(AUTHORIZATION, format!("JWT {}", token));
+        } else if let Some(api_key) = &self.configuration.api_key {
+            req = req.header(AUTHORIZATION, format!("Token {}", api_key));
+        }
+
+        let resp = req.multipart(form).send().await?;
+
+        match resp.status() {
+            StatusCode::OK => {
+                let json: api::file::File = resp.json().await?;
+                Ok(json)
+            }
+            _ => Err(Box::new(resp.error_for_status().unwrap_err())),
+        }
+    }
+
+    async fn upload_file_via_url(&self, url: &str) -> Result<api::file::File, Box<dyn Error>> {
+        let file_url = url.to_string();
+
+        let upload_request = api::file::UploadFileViaUrlRequest {
+            url: file_url.clone(),
+        };
+
+        let url = format!(
+            "{}/api/user-files/upload-file-from-url/",
+            &self.configuration.base_url
+        );
+
+        let mut req = Client::new().post(url).json(&upload_request);
+
+        if let Some(token) = &self.configuration.jwt {
+            req = req.header(AUTHORIZATION, format!("JWT {}", token));
+        } else if let Some(api_key) = &self.configuration.api_key {
+            req = req.header(AUTHORIZATION, format!("Token {}", api_key));
+        }
+
+        let resp = req.send().await?;
+
+        match resp.status() {
+            StatusCode::OK => {
+                let json: api::file::File = resp.json().await?;
+                Ok(json)
+            }
+            _ => Err(Box::new(resp.error_for_status().unwrap_err())),
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Default, Clone)]
@@ -161,7 +224,7 @@ impl BaserowTable {
             self.id.unwrap()
         );
 
-        let mut req = reqwest::Client::new().post(url);
+        let mut req = Client::new().post(url);
 
         if baserow.configuration.jwt.is_some() {
             req = req.header(
@@ -178,7 +241,7 @@ impl BaserowTable {
         let resp = req.json(&data).send().await?;
 
         match resp.status() {
-            reqwest::StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
+            StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
             _ => Err(Box::new(resp.error_for_status().unwrap_err())),
         }
     }
@@ -193,7 +256,7 @@ impl BaserowTable {
             id
         );
 
-        let mut req = reqwest::Client::new().get(url);
+        let mut req = Client::new().get(url);
 
         if baserow.configuration.jwt.is_some() {
             req = req.header(
@@ -210,7 +273,7 @@ impl BaserowTable {
         let resp = req.send().await?;
 
         match resp.status() {
-            reqwest::StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
+            StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
             _ => Err(Box::new(resp.error_for_status().unwrap_err())),
         }
     }
@@ -229,7 +292,7 @@ impl BaserowTable {
             id
         );
 
-        let mut req = reqwest::Client::new().patch(url);
+        let mut req = Client::new().patch(url);
 
         if baserow.configuration.jwt.is_some() {
             req = req.header(
@@ -246,7 +309,7 @@ impl BaserowTable {
         let resp = req.json(&data).send().await?;
 
         match resp.status() {
-            reqwest::StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
+            StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
             _ => Err(Box::new(resp.error_for_status().unwrap_err())),
         }
     }
@@ -261,7 +324,7 @@ impl BaserowTable {
             id
         );
 
-        let mut req = reqwest::Client::new().delete(url);
+        let mut req = Client::new().delete(url);
 
         if baserow.configuration.jwt.is_some() {
             req = req.header(
@@ -278,7 +341,7 @@ impl BaserowTable {
         let resp = req.send().await?;
 
         match resp.status() {
-            reqwest::StatusCode::OK => Ok(()),
+            StatusCode::OK => Ok(()),
             _ => Err(Box::new(resp.error_for_status().unwrap_err())),
         }
     }
