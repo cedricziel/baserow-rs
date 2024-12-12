@@ -89,39 +89,55 @@ impl ConfigBuilder {
 #[derive(Clone)]
 pub struct Baserow {
     configuration: Configuration,
+    client: Client,
 }
 
 impl Baserow {
     pub fn with_configuration(configuration: Configuration) -> Self {
-        Self { configuration }
+        Self {
+            configuration,
+            client: Client::new(),
+        }
     }
 
     pub fn with_database_token(self, token: String) -> Self {
         let mut configuration = self.configuration.clone();
         configuration.database_token = Some(token);
 
-        Self { configuration }
+        Self {
+            configuration,
+            client: self.client,
+        }
     }
 
     fn with_access_token(&self, access_token: String) -> Self {
         let mut configuration = self.configuration.clone();
         configuration.access_token = Some(access_token);
 
-        Self { configuration }
+        Self {
+            configuration,
+            client: self.client.clone(),
+        }
     }
 
     fn with_refresh_token(&self, refresh_token: String) -> Self {
         let mut configuration = self.configuration.clone();
         configuration.refresh_token = Some(refresh_token);
 
-        Self { configuration }
+        Self {
+            configuration,
+            client: self.client.clone(),
+        }
     }
 
     fn with_user(&self, user: User) -> Self {
         let mut configuration = self.configuration.clone();
         configuration.user = Some(user);
 
-        Self { configuration }
+        Self {
+            configuration,
+            client: self.client.clone(),
+        }
     }
 
     /// Authenticates an existing user based on their email and their password.
@@ -187,7 +203,7 @@ impl Baserow {
 
         let form = reqwest::multipart::Form::new().part("file", file_part);
 
-        let mut req = Client::new().post(url);
+        let mut req = self.client.post(url);
 
         if let Some(token) = &self.configuration.jwt {
             req = req.header(AUTHORIZATION, format!("JWT {}", token));
@@ -233,7 +249,7 @@ impl Baserow {
             &self.configuration.base_url
         );
 
-        let mut req = Client::new().post(url).json(&upload_request);
+        let mut req = self.client.post(url).json(&upload_request);
 
         if let Some(token) = &self.configuration.jwt {
             req = req.header(AUTHORIZATION, format!("JWT {}", token));
@@ -296,7 +312,7 @@ impl BaserowTable {
             self.id.unwrap()
         );
 
-        let mut req = Client::new().post(url);
+        let mut req = baserow.client.post(url);
 
         if baserow.configuration.jwt.is_some() {
             req = req.header(
@@ -328,7 +344,7 @@ impl BaserowTable {
             id
         );
 
-        let mut req = Client::new().get(url);
+        let mut req = baserow.client.get(url);
 
         if baserow.configuration.jwt.is_some() {
             req = req.header(
@@ -364,7 +380,7 @@ impl BaserowTable {
             id
         );
 
-        let mut req = Client::new().patch(url);
+        let mut req = baserow.client.patch(url);
 
         if baserow.configuration.jwt.is_some() {
             req = req.header(
@@ -396,7 +412,7 @@ impl BaserowTable {
             id
         );
 
-        let mut req = Client::new().delete(url);
+        let mut req = baserow.client.delete(url);
 
         if baserow.configuration.jwt.is_some() {
             req = req.header(
