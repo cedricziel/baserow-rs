@@ -183,6 +183,38 @@ impl BaserowTable {
         }
     }
 
+    pub async fn get_one(self, id: u64) -> Result<HashMap<String, Value>, Box<dyn Error>> {
+        let baserow = self.baserow.expect("Baserow instance is missing");
+
+        let url = format!(
+            "{}/api/database/rows/table/{}/{}/",
+            &baserow.configuration.base_url,
+            self.id.unwrap(),
+            id
+        );
+
+        let mut req = reqwest::Client::new().get(url);
+
+        if baserow.configuration.jwt.is_some() {
+            req = req.header(
+                AUTHORIZATION,
+                format!("JWT {}", &baserow.configuration.jwt.unwrap()),
+            );
+        } else if baserow.configuration.api_key.is_some() {
+            req = req.header(
+                AUTHORIZATION,
+                format!("Token {}", &baserow.configuration.api_key.unwrap()),
+            );
+        }
+
+        let resp = req.send().await?;
+
+        match resp.status() {
+            reqwest::StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
+            _ => Err(Box::new(resp.error_for_status().unwrap_err())),
+        }
+    }
+
     pub async fn update(
         self,
         id: u64,
@@ -438,6 +470,39 @@ mod tests {
 
         let created_record = result.unwrap();
         assert_eq!(created_record["field_1"], Value::String("test".to_string()));
+
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_get_record() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let mock = server
+            .mock("GET", "/api/database/rows/table/1234/5678/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_header(AUTHORIZATION, format!("Token {}", "123").as_str())
+            .with_body(r#"{"id": 5678, "field_1": "test"}"#)
+            .create();
+
+        let configuration = Configuration {
+            base_url: mock_url,
+            api_key: Some("123".to_string()),
+            email: None,
+            password: None,
+            jwt: None,
+        };
+        let baserow = Baserow::with_configuration(configuration);
+        let table = baserow.table_by_id(1234);
+
+        let result = table.get_one(5678).await;
+        assert!(result.is_ok());
+
+        let record = result.unwrap();
+        assert_eq!(record["id"], Value::Number(5678.into()));
+        assert_eq!(record["field_1"], Value::String("test".to_string()));
 
         mock.assert();
     }
