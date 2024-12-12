@@ -441,4 +441,42 @@ mod tests {
 
         mock.assert();
     }
+
+    #[tokio::test]
+    async fn test_update_record() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let mock = server
+            .mock("PATCH", "/api/database/rows/table/1234/5678/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_header(AUTHORIZATION, format!("Token {}", "123").as_str())
+            .with_body(r#"{"id": 5678, "field_1": "updated"}"#)
+            .create();
+
+        let configuration = Configuration {
+            base_url: mock_url,
+            api_key: Some("123".to_string()),
+            email: None,
+            password: None,
+            jwt: None,
+        };
+        let baserow = Baserow::with_configuration(configuration);
+        let table = baserow.table_by_id(1234);
+
+        let mut record = HashMap::new();
+        record.insert("field_1".to_string(), Value::String("updated".to_string()));
+
+        let result = table.update(5678, record).await;
+        assert!(result.is_ok());
+
+        let updated_record = result.unwrap();
+        assert_eq!(
+            updated_record["field_1"],
+            Value::String("updated".to_string())
+        );
+
+        mock.assert();
+    }
 }
