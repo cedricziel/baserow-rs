@@ -1,7 +1,7 @@
 use std::{collections::HashMap, error::Error, fs::File};
 
 use api::{
-    authentication::{LoginRequest, TokenAuthErrorResponse, TokenResponse, User},
+    authentication::{LoginRequest, TokenResponse, User},
     table::RowRequestBuilder,
 };
 use reqwest::{header::AUTHORIZATION, multipart, Body, Client, StatusCode};
@@ -691,6 +691,9 @@ mod tests {
         mock.assert();
     }
 
+    /*************  ✨ Codeium Command ⭐  *************/
+    /// Tests the `delete` function of the `BaserowTable` struct to ensure it can
+    /******  b32d9f4b-f082-49c5-9a79-351e45da34c0  *******/
     #[tokio::test]
     async fn test_delete_record() {
         let mut server = mockito::Server::new_async().await;

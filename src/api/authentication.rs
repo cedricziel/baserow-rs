@@ -16,9 +16,9 @@ pub struct TokenResponse {
 
 #[derive(Deserialize, Clone)]
 pub struct User {
-    first_name: String,
-    username: String,
-    language: String,
+    pub first_name: String,
+    pub username: String,
+    pub language: String,
 }
 
 #[derive(Deserialize)]
