@@ -1,19 +1,37 @@
 use std::{collections::HashMap, error::Error, fs::File};
 
-use api::table::{RowRequestBuilder, RowsResponse};
-use reqwest::header::AUTHORIZATION;
+use api::{
+    authentication::{LoginRequest, TokenResponse, User},
+    table::RowRequestBuilder,
+};
+use error::{FileUploadError, TokenAuthError};
+use reqwest::{
+    header::AUTHORIZATION,
+    multipart::{self, Form},
+    Body, Client, StatusCode,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tokio_util::codec::{BytesCodec, FramedRead};
 
 mod api;
+
+pub mod error;
+pub mod filter;
 
 #[derive(Clone)]
 pub struct Configuration {
     base_url: String,
-    api_key: Option<String>,
+
     email: Option<String>,
     password: Option<String>,
     jwt: Option<String>,
+
+    database_token: Option<String>,
+    access_token: Option<String>,
+    refresh_token: Option<String>,
+
+    user: Option<User>,
 }
 
 #[derive(Default)]
@@ -59,11 +77,16 @@ impl ConfigBuilder {
     pub fn build(self) -> Configuration {
         Configuration {
             base_url: self.base_url.unwrap(),
-            api_key: self.api_key,
 
             email: self.email,
             password: self.password,
             jwt: None,
+
+            database_token: self.api_key,
+            access_token: None,
+            refresh_token: None,
+
+            user: None,
         }
     }
 }
@@ -71,38 +94,94 @@ impl ConfigBuilder {
 #[derive(Clone)]
 pub struct Baserow {
     configuration: Configuration,
+    client: Client,
 }
 
 impl Baserow {
     pub fn with_configuration(configuration: Configuration) -> Self {
-        Self { configuration }
+        Self {
+            configuration,
+            client: Client::new(),
+        }
     }
 
-    pub fn with_token(self, token: String) -> Self {
+    pub fn with_database_token(self, token: String) -> Self {
         let mut configuration = self.configuration.clone();
-        configuration.jwt = Some(token);
+        configuration.database_token = Some(token);
 
-        Self { configuration }
+        Self {
+            configuration,
+            client: self.client,
+        }
     }
 
-    pub async fn login(&self) -> Result<Baserow, Box<dyn Error>> {
-        let url = format!("{}/api/auth/token/", &self.configuration.base_url);
-        let form = [
-            ("email", self.configuration.email.clone().unwrap()),
-            ("password", self.configuration.password.clone().unwrap()),
-        ];
+    fn with_access_token(&self, access_token: String) -> Self {
+        let mut configuration = self.configuration.clone();
+        configuration.access_token = Some(access_token);
 
-        let req = reqwest::Client::new().post(url).form(&form);
+        Self {
+            configuration,
+            client: self.client.clone(),
+        }
+    }
+
+    fn with_refresh_token(&self, refresh_token: String) -> Self {
+        let mut configuration = self.configuration.clone();
+        configuration.refresh_token = Some(refresh_token);
+
+        Self {
+            configuration,
+            client: self.client.clone(),
+        }
+    }
+
+    fn with_user(&self, user: User) -> Self {
+        let mut configuration = self.configuration.clone();
+        configuration.user = Some(user);
+
+        Self {
+            configuration,
+            client: self.client.clone(),
+        }
+    }
+
+    /// Authenticates an existing user based on their email and their password.
+    /// If successful, an access token and a refresh token will be returned.
+    pub async fn token_auth(&self) -> Result<Baserow, TokenAuthError> {
+        let url = format!("{}/api/user/token-auth/", &self.configuration.base_url);
+
+        let email = self
+            .configuration
+            .email
+            .as_ref()
+            .ok_or(TokenAuthError::MissingCredentials("email"))?;
+
+        let password = self
+            .configuration
+            .password
+            .as_ref()
+            .ok_or(TokenAuthError::MissingCredentials("password"))?;
+
+        let auth_request = LoginRequest {
+            email: email.clone(),
+            password: password.clone(),
+        };
+
+        let req = Client::new().post(url).json(&auth_request);
 
         let resp = req.send().await?;
 
         match resp.status() {
-            reqwest::StatusCode::OK => {
-                let token = resp.text().await?;
-                println!("Token: {}", token);
-                Ok(self.clone().with_token(token))
+            StatusCode::OK => {
+                let token_response: TokenResponse = resp.json().await?;
+                Ok(self
+                    .clone()
+                    .with_database_token(token_response.token)
+                    .with_access_token(token_response.access_token)
+                    .with_refresh_token(token_response.refresh_token)
+                    .with_user(token_response.user))
             }
-            _ => Err(Box::new(resp.error_for_status().unwrap_err())),
+            _ => Err(TokenAuthError::AuthenticationFailed(resp.text().await?)),
         }
     }
 
@@ -113,9 +192,87 @@ impl Baserow {
             .with_baserow(self.clone())
     }
 
-    fn upload_file(&self, file: File) {}
+    pub async fn upload_file(
+        &self,
+        file: File,
+        filename: String,
+    ) -> Result<api::file::File, FileUploadError> {
+        let url = format!(
+            "{}/api/user-files/upload-file/",
+            &self.configuration.base_url
+        );
 
-    fn upload_file_via_url(&self, url: &str) {}
+        let file = tokio::fs::File::from_std(file);
+        let stream = FramedRead::new(file, BytesCodec::new());
+        let file_body = Body::wrap_stream(stream);
+
+        let mime_type = mime_guess::from_path(&filename).first_or_octet_stream();
+
+        let file_part = multipart::Part::stream(file_body)
+            .file_name(filename)
+            .mime_str(mime_type.as_ref())?;
+
+        let form = Form::new().part("file", file_part);
+
+        let mut req = self.client.post(url);
+
+        if let Some(token) = &self.configuration.jwt {
+            req = req.header(AUTHORIZATION, format!("JWT {}", token));
+        } else if let Some(api_key) = &self.configuration.database_token {
+            req = req.header(AUTHORIZATION, format!("Token {}", api_key));
+        }
+
+        let resp = req.multipart(form).send().await;
+
+        match resp {
+            Ok(resp) => match resp.status() {
+                StatusCode::OK => {
+                    let json: api::file::File = resp.json().await?;
+                    Ok(json)
+                }
+                _ => Err(FileUploadError::UnexpectedStatusCode(resp.status())),
+            },
+            Err(e) => Err(FileUploadError::UploadError(e)),
+        }
+    }
+
+    pub async fn upload_file_via_url(&self, url: &str) -> Result<api::file::File, FileUploadError> {
+        // Validate URL format and scheme
+        let file_url = url
+            .parse::<reqwest::Url>()
+            .map_err(|_| FileUploadError::InvalidURL(url.to_string()))?
+            .to_string();
+
+        let upload_request = api::file::UploadFileViaUrlRequest {
+            url: file_url.clone(),
+        };
+
+        let url = format!(
+            "{}/api/user-files/upload-via-url/",
+            &self.configuration.base_url
+        );
+
+        let mut req = self.client.post(url).json(&upload_request);
+
+        if let Some(token) = &self.configuration.jwt {
+            req = req.header(AUTHORIZATION, format!("JWT {}", token));
+        } else if let Some(api_key) = &self.configuration.database_token {
+            req = req.header(AUTHORIZATION, format!("Token {}", api_key));
+        }
+
+        let resp = req.send().await;
+
+        match resp {
+            Ok(resp) => match resp.status() {
+                StatusCode::OK => {
+                    let json: api::file::File = resp.json().await?;
+                    Ok(json)
+                }
+                _ => Err(FileUploadError::UnexpectedStatusCode(resp.status())),
+            },
+            Err(e) => Err(FileUploadError::UploadError(e)),
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Default, Clone)]
@@ -161,24 +318,24 @@ impl BaserowTable {
             self.id.unwrap()
         );
 
-        let mut req = reqwest::Client::new().post(url);
+        let mut req = baserow.client.post(url);
 
         if baserow.configuration.jwt.is_some() {
             req = req.header(
                 AUTHORIZATION,
                 format!("JWT {}", &baserow.configuration.jwt.unwrap()),
             );
-        } else if baserow.configuration.api_key.is_some() {
+        } else if baserow.configuration.database_token.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.api_key.unwrap()),
+                format!("Token {}", &baserow.configuration.database_token.unwrap()),
             );
         }
 
         let resp = req.json(&data).send().await?;
 
         match resp.status() {
-            reqwest::StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
+            StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
             _ => Err(Box::new(resp.error_for_status().unwrap_err())),
         }
     }
@@ -193,24 +350,24 @@ impl BaserowTable {
             id
         );
 
-        let mut req = reqwest::Client::new().get(url);
+        let mut req = baserow.client.get(url);
 
         if baserow.configuration.jwt.is_some() {
             req = req.header(
                 AUTHORIZATION,
                 format!("JWT {}", &baserow.configuration.jwt.unwrap()),
             );
-        } else if baserow.configuration.api_key.is_some() {
+        } else if baserow.configuration.database_token.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.api_key.unwrap()),
+                format!("Token {}", &baserow.configuration.database_token.unwrap()),
             );
         }
 
         let resp = req.send().await?;
 
         match resp.status() {
-            reqwest::StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
+            StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
             _ => Err(Box::new(resp.error_for_status().unwrap_err())),
         }
     }
@@ -229,24 +386,24 @@ impl BaserowTable {
             id
         );
 
-        let mut req = reqwest::Client::new().patch(url);
+        let mut req = baserow.client.patch(url);
 
         if baserow.configuration.jwt.is_some() {
             req = req.header(
                 AUTHORIZATION,
                 format!("JWT {}", &baserow.configuration.jwt.unwrap()),
             );
-        } else if baserow.configuration.api_key.is_some() {
+        } else if baserow.configuration.database_token.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.api_key.unwrap()),
+                format!("Token {}", &baserow.configuration.database_token.unwrap()),
             );
         }
 
         let resp = req.json(&data).send().await?;
 
         match resp.status() {
-            reqwest::StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
+            StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
             _ => Err(Box::new(resp.error_for_status().unwrap_err())),
         }
     }
@@ -261,24 +418,24 @@ impl BaserowTable {
             id
         );
 
-        let mut req = reqwest::Client::new().delete(url);
+        let mut req = baserow.client.delete(url);
 
         if baserow.configuration.jwt.is_some() {
             req = req.header(
                 AUTHORIZATION,
                 format!("JWT {}", &baserow.configuration.jwt.unwrap()),
             );
-        } else if baserow.configuration.api_key.is_some() {
+        } else if baserow.configuration.database_token.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.api_key.unwrap()),
+                format!("Token {}", &baserow.configuration.database_token.unwrap()),
             );
         }
 
         let resp = req.send().await?;
 
         match resp.status() {
-            reqwest::StatusCode::OK => Ok(()),
+            StatusCode::OK => Ok(()),
             _ => Err(Box::new(resp.error_for_status().unwrap_err())),
         }
     }
@@ -289,179 +446,21 @@ pub enum OrderDirection {
     Desc,
 }
 
-#[derive(Debug)]
-pub enum Filter {
-    Equal,
-    NotEqual,
-    DateIs,
-    DateIsNot,
-    DateIsBefore,
-    DateIsOnOrBefore,
-    DateIsAfter,
-    DateIsOnOrAfter,
-    DateIsWithin,
-    DateEqual,
-    DateNotEqual,
-    DateEqualsToday,
-    DateBeforeToday,
-    DateAfterToday,
-    DateWithinDays,
-    DateWithinWeeks,
-    DateWithinMonths,
-    DateEqualsDaysAgo,
-    DateEqualsMonthsAgo,
-    DateEqualsYearsAgo,
-    DateEqualsWeek,
-    DateEqualsMonth,
-    DateEqualsYear,
-    DateEqualsDayOfMonth,
-    DateBefore,
-    DateBeforeOrEqual,
-    DateAfter,
-    DateAfterOrEqual,
-    DateAfterDaysAgo,
-    HasEmptyValue,
-    HasNotEmptyValue,
-    HasValueEqual,
-    HasNotValueEqual,
-    HasValueContains,
-    HasNotValueContains,
-    HasValueContainsWord,
-    HasNotValueContainsWord,
-    HasValueLengthIsLowerThan,
-    HasAllValuesEqual,
-    HasAnySelectOptionEqual,
-    HasNoneSelectOptionEqual,
-    Contains,
-    ContainsNot,
-    ContainsWord,
-    DoesntContainWord,
-    FilenameContains,
-    HasFileType,
-    FilesLowerThan,
-    LengthIsLowerThan,
-    HigherThan,
-    HigherThanOrEqual,
-    LowerThan,
-    LowerThanOrEqual,
-    IsEvenAndWhole,
-    SingleSelectEqual,
-    SingleSelectNotEqual,
-    SingleSelectIsAnyOf,
-    SingleSelectIsNoneOf,
-    Boolean,
-    LinkRowHas,
-    LinkRowHasNot,
-    LinkRowContains,
-    LinkRowNotContains,
-    MultipleSelectHas,
-    MultipleSelectHasNot,
-    MultipleCollaboratorsHas,
-    MultipleCollaboratorsHasNot,
-    Empty,
-    NotEmpty,
-    UserIs,
-    UserIsNot,
-}
-
-impl Filter {
-    fn as_str(&self) -> &'static str {
-        match self {
-            Filter::Equal => "equal",
-            Filter::NotEqual => "not_equal",
-            Filter::DateIs => "date_is",
-            Filter::DateIsNot => "date_is_not",
-            Filter::DateIsBefore => "date_is_before",
-            Filter::DateIsOnOrBefore => "date_is_on_or_before",
-            Filter::DateIsAfter => "date_is_after",
-            Filter::DateIsOnOrAfter => "date_is_on_or_after",
-            Filter::DateIsWithin => "date_is_within",
-            Filter::DateEqual => "date_equal",
-            Filter::DateNotEqual => "date_not_equal",
-            Filter::DateEqualsToday => "date_equals_today",
-            Filter::DateBeforeToday => "date_before_today",
-            Filter::DateAfterToday => "date_after_today",
-            Filter::DateWithinDays => "date_within_days",
-            Filter::DateWithinWeeks => "date_within_weeks",
-            Filter::DateWithinMonths => "date_within_months",
-            Filter::DateEqualsDaysAgo => "date_equals_days_ago",
-            Filter::DateEqualsMonthsAgo => "date_equals_months_ago",
-            Filter::DateEqualsYearsAgo => "date_equals_years_ago",
-            Filter::DateEqualsWeek => "date_equals_week",
-            Filter::DateEqualsMonth => "date_equals_month",
-            Filter::DateEqualsYear => "date_equals_year",
-            Filter::DateEqualsDayOfMonth => "date_equals_day_of_month",
-            Filter::DateBefore => "date_before",
-            Filter::DateBeforeOrEqual => "date_before_or_equal",
-            Filter::DateAfter => "date_after",
-            Filter::DateAfterOrEqual => "date_after_or_equal",
-            Filter::DateAfterDaysAgo => "date_after_days_ago",
-            Filter::HasEmptyValue => "has_empty_value",
-            Filter::HasNotEmptyValue => "has_not_empty_value",
-            Filter::HasValueEqual => "has_value_equal",
-            Filter::HasNotValueEqual => "has_not_value_equal",
-            Filter::HasValueContains => "has_value_contains",
-            Filter::HasNotValueContains => "has_not_value_contains",
-            Filter::HasValueContainsWord => "has_value_contains_word",
-            Filter::HasNotValueContainsWord => "has_not_value_contains_word",
-            Filter::HasValueLengthIsLowerThan => "has_value_length_is_lower_than",
-            Filter::HasAllValuesEqual => "has_all_values_equal",
-            Filter::HasAnySelectOptionEqual => "has_any_select_option_equal",
-            Filter::HasNoneSelectOptionEqual => "has_none_select_option_equal",
-            Filter::Contains => "contains",
-            Filter::ContainsNot => "contains_not",
-            Filter::ContainsWord => "contains_word",
-            Filter::DoesntContainWord => "doesnt_contain_word",
-            Filter::FilenameContains => "filename_contains",
-            Filter::HasFileType => "has_file_type",
-            Filter::FilesLowerThan => "files_lower_than",
-            Filter::LengthIsLowerThan => "length_is_lower_than",
-            Filter::HigherThan => "higher_than",
-            Filter::HigherThanOrEqual => "higher_than_or_equal",
-            Filter::LowerThan => "lower_than",
-            Filter::LowerThanOrEqual => "lower_than_or_equal",
-            Filter::IsEvenAndWhole => "is_even_and_whole",
-            Filter::SingleSelectEqual => "single_select_equal",
-            Filter::SingleSelectNotEqual => "single_select_not_equal",
-            Filter::SingleSelectIsAnyOf => "single_select_is_any_of",
-            Filter::SingleSelectIsNoneOf => "single_select_is_none_of",
-            Filter::Boolean => "boolean",
-            Filter::LinkRowHas => "link_row_has",
-            Filter::LinkRowHasNot => "link_row_has_not",
-            Filter::LinkRowContains => "link_row_contains",
-            Filter::LinkRowNotContains => "link_row_not_contains",
-            Filter::MultipleSelectHas => "multiple_select_has",
-            Filter::MultipleSelectHasNot => "multiple_select_has_not",
-            Filter::MultipleCollaboratorsHas => "multiple_collaborators_has",
-            Filter::MultipleCollaboratorsHasNot => "multiple_collaborators_has_not",
-            Filter::Empty => "empty",
-            Filter::NotEmpty => "not_empty",
-            Filter::UserIs => "user_is",
-            Filter::UserIsNot => "user_is_not",
-        }
-    }
-}
-
-pub struct FilterTriple {
-    field: String,
-    filter: Filter,
-    value: String,
-}
-
 #[cfg(test)]
 mod tests {
-    use mockito::Server;
-
     use super::*;
 
     #[test]
     fn test() {
         let configuration = Configuration {
             base_url: "https://baserow.io".to_string(),
-            api_key: Some("123".to_string()),
+            database_token: Some("123".to_string()),
             email: None,
             password: None,
             jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
         };
         let baserow = Baserow::with_configuration(configuration);
         let _table = baserow.table_by_id(1234);
@@ -482,10 +481,13 @@ mod tests {
 
         let configuration = Configuration {
             base_url: mock_url,
-            api_key: Some("123".to_string()),
+            database_token: Some("123".to_string()),
             email: None,
             password: None,
             jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
         };
         let baserow = Baserow::with_configuration(configuration);
         let table = baserow.table_by_id(1234);
@@ -517,10 +519,13 @@ mod tests {
 
         let configuration = Configuration {
             base_url: mock_url,
-            api_key: Some("123".to_string()),
+            database_token: Some("123".to_string()),
             email: None,
             password: None,
             jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
         };
         let baserow = Baserow::with_configuration(configuration);
         let table = baserow.table_by_id(1234);
@@ -550,10 +555,13 @@ mod tests {
 
         let configuration = Configuration {
             base_url: mock_url,
-            api_key: Some("123".to_string()),
+            database_token: Some("123".to_string()),
             email: None,
             password: None,
             jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
         };
         let baserow = Baserow::with_configuration(configuration);
         let table = baserow.table_by_id(1234);
@@ -573,6 +581,7 @@ mod tests {
         mock.assert();
     }
 
+/// Tests the `delete` function of the `BaserowTable` struct to ensure it can delete a record successfully.
     #[tokio::test]
     async fn test_delete_record() {
         let mut server = mockito::Server::new_async().await;
@@ -587,16 +596,174 @@ mod tests {
 
         let configuration = Configuration {
             base_url: mock_url,
-            api_key: Some("123".to_string()),
+            database_token: Some("123".to_string()),
             email: None,
             password: None,
             jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
         };
         let baserow = Baserow::with_configuration(configuration);
         let table = baserow.table_by_id(1234);
 
         let result = table.delete(5678).await;
         assert!(result.is_ok());
+
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_upload_file_via_url() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let mock = server
+            .mock("POST", "/api/user-files/upload-via-url/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_header(AUTHORIZATION, format!("Token {}", "123").as_str())
+            .with_body(r#"{
+    "url": "https://files.baserow.io/user_files/VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png",
+    "thumbnails": {
+        "tiny": {
+            "url": "https://files.baserow.io/media/thumbnails/tiny/VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png",
+            "width": 21,
+            "height": 21
+        },
+        "small": {
+            "url": "https://files.baserow.io/media/thumbnails/small/VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png",
+            "width": 48,
+            "height": 48
+        }
+    },
+    "name": "VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png",
+    "size": 229940,
+    "mime_type": "image/png",
+    "is_image": true,
+    "image_width": 1280,
+    "image_height": 585,
+    "uploaded_at": "2020-11-17T12:16:10.035234+00:00"
+}"#)
+            .create();
+
+        let configuration = Configuration {
+            base_url: mock_url,
+            database_token: Some("123".to_string()),
+            email: None,
+            password: None,
+            jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
+        };
+        let baserow = Baserow::with_configuration(configuration);
+
+        let result = baserow
+            .upload_file_via_url("https://example.com/test.txt")
+            .await;
+        assert!(result.is_ok());
+
+        let uploaded_file = result.unwrap();
+        assert_eq!(uploaded_file.name, "VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png".to_string());
+
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_token_auth() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let mock = server
+            .mock("POST", "/api/user/token-auth/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(
+                r#"{
+  "user": {
+    "first_name": "string",
+    "username": "user@example.com",
+    "language": "string"
+  },
+  "token": "string",
+  "access_token": "string",
+  "refresh_token": "string"
+}"#,
+            )
+            .create();
+
+        let configuration = ConfigBuilder::new()
+            .base_url(&mock_url)
+            .email("test@example.com")
+            .password("password")
+            .build();
+        let baserow = Baserow::with_configuration(configuration);
+
+        let result = baserow.token_auth().await;
+        assert!(result.is_ok());
+
+        let logged_in_baserow = result.unwrap();
+        assert_eq!(
+            logged_in_baserow.configuration.database_token.unwrap(),
+            "string"
+        );
+
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_upload_file() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let mock = server
+            .mock("POST", "/api/user-files/upload-file/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_header(AUTHORIZATION, format!("Token {}", "123").as_str())
+            .with_body(r#"{
+    "url": "https://files.baserow.io/user_files/VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png",
+    "thumbnails": {
+        "tiny": {
+            "url": "https://files.baserow.io/media/thumbnails/tiny/VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png",
+            "width": 21,
+            "height": 21
+        },
+        "small": {
+            "url": "https://files.baserow.io/media/thumbnails/small/VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png",
+            "width": 48,
+            "height": 48
+        }
+    },
+    "name": "VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png",
+    "size": 229940,
+    "mime_type": "image/png",
+    "is_image": true,
+    "image_width": 1280,
+    "image_height": 585,
+    "uploaded_at": "2020-11-17T12:16:10.035234+00:00"
+}"#)
+            .create();
+
+        let configuration = Configuration {
+            base_url: mock_url,
+            database_token: Some("123".to_string()),
+            email: None,
+            password: None,
+            jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
+        };
+        let baserow = Baserow::with_configuration(configuration);
+
+        let file = File::open(".gitignore").unwrap();
+        let result = baserow.upload_file(file, "image.png".to_string()).await;
+        assert!(result.is_ok());
+
+        let uploaded_file = result.unwrap();
+        assert_eq!(uploaded_file.name, "VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png".to_string());
 
         mock.assert();
     }

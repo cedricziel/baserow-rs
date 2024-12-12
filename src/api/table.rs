@@ -1,10 +1,13 @@
 use std::{collections::HashMap, error::Error, vec};
 
-use reqwest::{Client, StatusCode, header::AUTHORIZATION};
+use reqwest::{header::AUTHORIZATION, Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{Baserow, BaserowTable, Filter, FilterTriple, OrderDirection};
+use crate::{
+    filter::{Filter, FilterTriple},
+    Baserow, BaserowTable, OrderDirection,
+};
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct RowsResponse {
@@ -107,12 +110,12 @@ impl RowRequestBuilder {
         if baserow.configuration.jwt.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("JWT {}", &baserow.configuration.api_key.unwrap()),
+                format!("JWT {}", &baserow.configuration.database_token.unwrap()),
             );
-        } else if baserow.configuration.api_key.is_some() {
+        } else if baserow.configuration.database_token.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.api_key.unwrap()),
+                format!("Token {}", &baserow.configuration.database_token.unwrap()),
             );
         }
 
