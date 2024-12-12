@@ -219,8 +219,36 @@ impl BaserowTable {
         }
     }
 
-    pub async fn delete(self, id: u64) -> Result<RowsResponse, Box<dyn Error>> {
-        todo!()
+    pub async fn delete(self, id: u64) -> Result<(), Box<dyn Error>> {
+        let baserow = self.baserow.expect("Baserow instance is missing");
+
+        let url = format!(
+            "{}/api/database/rows/table/{}/{}/",
+            &baserow.configuration.base_url,
+            self.id.unwrap(),
+            id
+        );
+
+        let mut req = reqwest::Client::new().delete(url);
+
+        if baserow.configuration.jwt.is_some() {
+            req = req.header(
+                AUTHORIZATION,
+                format!("JWT {}", &baserow.configuration.jwt.unwrap()),
+            );
+        } else if baserow.configuration.api_key.is_some() {
+            req = req.header(
+                AUTHORIZATION,
+                format!("Token {}", &baserow.configuration.api_key.unwrap()),
+            );
+        }
+
+        let resp = req.send().await?;
+
+        match resp.status() {
+            reqwest::StatusCode::OK => Ok(()),
+            _ => Err(Box::new(resp.error_for_status().unwrap_err())),
+        }
     }
 }
 
@@ -476,6 +504,34 @@ mod tests {
             updated_record["field_1"],
             Value::String("updated".to_string())
         );
+
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_delete_record() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let mock = server
+            .mock("DELETE", "/api/database/rows/table/1234/5678/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_header(AUTHORIZATION, format!("Token {}", "123").as_str())
+            .create();
+
+        let configuration = Configuration {
+            base_url: mock_url,
+            api_key: Some("123".to_string()),
+            email: None,
+            password: None,
+            jwt: None,
+        };
+        let baserow = Baserow::with_configuration(configuration);
+        let table = baserow.table_by_id(1234);
+
+        let result = table.delete(5678).await;
+        assert!(result.is_ok());
 
         mock.assert();
     }
