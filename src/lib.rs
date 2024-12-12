@@ -195,6 +195,20 @@ impl Baserow {
     }
 
     pub async fn upload_file_via_url(&self, url: &str) -> Result<api::file::File, Box<dyn Error>> {
+        // Validate URL format and scheme
+        let parsed_url = url.parse::<reqwest::Url>()
+            .map_err(|_| Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Invalid URL format"
+            )))?;
+        
+        if !["http", "https"].contains(&parsed_url.scheme()) {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "URL must use HTTP or HTTPS scheme"
+            )));
+        }
+
         let file_url = url.to_string();
 
         let upload_request = api::file::UploadFileViaUrlRequest {
