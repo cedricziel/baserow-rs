@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.0](https://github.com/cedricziel/baserow-rs/compare/v0.2.0...v0.3.0) (2024-12-12)
+
+
+### Features
+
+* add get one record ([#10](https://github.com/cedricziel/baserow-rs/issues/10)) ([45337f3](https://github.com/cedricziel/baserow-rs/commit/45337f3a0c7aef0a517419fb4dbfb8885b85abfe))
+* delete one record ([#11](https://github.com/cedricziel/baserow-rs/issues/11)) ([a1af353](https://github.com/cedricziel/baserow-rs/commit/a1af3532be4487eb8db51c08c53654545386818f))
+* update rows ([#8](https://github.com/cedricziel/baserow-rs/issues/8)) ([11eaa41](https://github.com/cedricziel/baserow-rs/commit/11eaa4117a210bfc4a65635a9ef8d321a2a556d8))
+
 ## [0.2.0](https://github.com/cedricziel/baserow-rs/compare/v0.1.4...v0.2.0) (2024-12-11)
 
 
