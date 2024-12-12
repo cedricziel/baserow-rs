@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/cedricziel/baserow-rs/compare/v0.3.0...v0.4.0) (2024-12-12)
+
+
+### Features
+
+* add file upload functionality and update dependencies ([#12](https://github.com/cedricziel/baserow-rs/issues/12)) ([dad9de5](https://github.com/cedricziel/baserow-rs/commit/dad9de5d43d918eab6b99324a300774b3aeb3546))
+
 ## [0.3.0](https://github.com/cedricziel/baserow-rs/compare/v0.2.0...v0.3.0) (2024-12-12)
 
 
