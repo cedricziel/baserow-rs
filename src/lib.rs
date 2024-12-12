@@ -4,6 +4,7 @@ use api::{
     authentication::{LoginRequest, TokenResponse, User},
     table::RowRequestBuilder,
 };
+use error::TokenAuthError;
 use reqwest::{header::AUTHORIZATION, multipart, Body, Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -125,12 +126,24 @@ impl Baserow {
 
     /// Authenticates an existing user based on their email and their password.
     /// If successful, an access token and a refresh token will be returned.
-    pub async fn token_auth(&self) -> Result<Baserow, Box<dyn Error>> {
+    pub async fn token_auth(&self) -> Result<Baserow, TokenAuthError> {
         let url = format!("{}/api/user/token-auth/", &self.configuration.base_url);
 
+        let email = self
+            .configuration
+            .email
+            .as_ref()
+            .ok_or(TokenAuthError::MissingCredentials("email"))?;
+
+        let password = self
+            .configuration
+            .password
+            .as_ref()
+            .ok_or(TokenAuthError::MissingCredentials("password"))?;
+
         let auth_request = LoginRequest {
-            email: self.configuration.email.clone().unwrap(),
-            password: self.configuration.password.clone().unwrap(),
+            email: email.clone(),
+            password: password.clone(),
         };
 
         let req = Client::new().post(url).json(&auth_request);
@@ -147,8 +160,7 @@ impl Baserow {
                     .with_refresh_token(token_response.refresh_token)
                     .with_user(token_response.user))
             }
-            StatusCode::UNAUTHORIZED => Err(Box::new(resp.error_for_status().unwrap_err())),
-            _ => Err(Box::new(resp.error_for_status().unwrap_err())),
+            _ => Err(TokenAuthError::AuthenticationFailed(resp.text().await?)),
         }
     }
 
@@ -196,16 +208,17 @@ impl Baserow {
 
     pub async fn upload_file_via_url(&self, url: &str) -> Result<api::file::File, Box<dyn Error>> {
         // Validate URL format and scheme
-        let parsed_url = url.parse::<reqwest::Url>()
-            .map_err(|_| Box::new(std::io::Error::new(
+        let parsed_url = url.parse::<reqwest::Url>().map_err(|_| {
+            Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "Invalid URL format"
-            )))?;
-        
+                "Invalid URL format",
+            ))
+        })?;
+
         if !["http", "https"].contains(&parsed_url.scheme()) {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "URL must use HTTP or HTTPS scheme"
+                "URL must use HTTP or HTTPS scheme",
             )));
         }
 
