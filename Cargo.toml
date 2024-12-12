@@ -15,3 +15,4 @@ serde_json = "1.0.133"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
+mockito = "1.6.0"

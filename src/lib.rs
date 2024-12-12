@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error, fmt::Display, fs::File};
+use std::{collections::HashMap, error::Error, fs::File};
 
 use api::table::{RowRequestBuilder, RowsResponse};
 use reqwest::header::AUTHORIZATION;
@@ -166,7 +166,7 @@ impl BaserowTable {
         if baserow.configuration.jwt.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("JWT {}", &baserow.configuration.api_key.unwrap()),
+                format!("JWT {}", &baserow.configuration.jwt.unwrap()),
             );
         } else if baserow.configuration.api_key.is_some() {
             req = req.header(
@@ -187,8 +187,36 @@ impl BaserowTable {
         self,
         id: u64,
         data: HashMap<String, Value>,
-    ) -> Result<RowsResponse, Box<dyn Error>> {
-        todo!()
+    ) -> Result<HashMap<String, Value>, Box<dyn Error>> {
+        let baserow = self.baserow.expect("Baserow instance is missing");
+
+        let url = format!(
+            "{}/api/database/rows/table/{}/{}/",
+            &baserow.configuration.base_url,
+            self.id.unwrap(),
+            id
+        );
+
+        let mut req = reqwest::Client::new().patch(url);
+
+        if baserow.configuration.jwt.is_some() {
+            req = req.header(
+                AUTHORIZATION,
+                format!("JWT {}", &baserow.configuration.jwt.unwrap()),
+            );
+        } else if baserow.configuration.api_key.is_some() {
+            req = req.header(
+                AUTHORIZATION,
+                format!("Token {}", &baserow.configuration.api_key.unwrap()),
+            );
+        }
+
+        let resp = req.json(&data).send().await?;
+
+        match resp.status() {
+            reqwest::StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
+            _ => Err(Box::new(resp.error_for_status().unwrap_err())),
+        }
     }
 
     pub async fn delete(self, id: u64) -> Result<RowsResponse, Box<dyn Error>> {
@@ -362,6 +390,8 @@ pub struct FilterTriple {
 
 #[cfg(test)]
 mod tests {
+    use mockito::Server;
+
     use super::*;
 
     #[test]
@@ -375,5 +405,78 @@ mod tests {
         };
         let baserow = Baserow::with_configuration(configuration);
         let _table = baserow.table_by_id(1234);
+    }
+
+    #[tokio::test]
+    async fn test_create_record() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let mock = server
+            .mock("POST", "/api/database/rows/table/1234/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_header(AUTHORIZATION, format!("Token {}", "123").as_str())
+            .with_body(r#"{"id": 1234, "field_1": "test"}"#)
+            .create();
+
+        let configuration = Configuration {
+            base_url: mock_url,
+            api_key: Some("123".to_string()),
+            email: None,
+            password: None,
+            jwt: None,
+        };
+        let baserow = Baserow::with_configuration(configuration);
+        let table = baserow.table_by_id(1234);
+
+        let mut record = HashMap::new();
+        record.insert("field_1".to_string(), Value::String("test".to_string()));
+
+        let result = table.create_one(record).await;
+        assert!(result.is_ok());
+
+        let created_record = result.unwrap();
+        assert_eq!(created_record["field_1"], Value::String("test".to_string()));
+
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_update_record() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let mock = server
+            .mock("PATCH", "/api/database/rows/table/1234/5678/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_header(AUTHORIZATION, format!("Token {}", "123").as_str())
+            .with_body(r#"{"id": 5678, "field_1": "updated"}"#)
+            .create();
+
+        let configuration = Configuration {
+            base_url: mock_url,
+            api_key: Some("123".to_string()),
+            email: None,
+            password: None,
+            jwt: None,
+        };
+        let baserow = Baserow::with_configuration(configuration);
+        let table = baserow.table_by_id(1234);
+
+        let mut record = HashMap::new();
+        record.insert("field_1".to_string(), Value::String("updated".to_string()));
+
+        let result = table.update(5678, record).await;
+        assert!(result.is_ok());
+
+        let updated_record = result.unwrap();
+        assert_eq!(
+            updated_record["field_1"],
+            Value::String("updated".to_string())
+        );
+
+        mock.assert();
     }
 }
