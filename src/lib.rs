@@ -5,6 +5,7 @@ use api::{
     table::RowRequestBuilder,
 };
 use error::{FileUploadError, TokenAuthError};
+use mapper::TableMapper;
 use reqwest::{
     header::AUTHORIZATION,
     multipart::{self, Form},
@@ -18,6 +19,7 @@ mod api;
 
 pub mod error;
 pub mod filter;
+pub mod mapper;
 
 #[derive(Clone)]
 pub struct Configuration {
@@ -185,6 +187,25 @@ impl Baserow {
         }
     }
 
+    pub async fn table_fields(&self, table_id: u64) -> Result<Vec<TableField>, Box<dyn Error>> {
+        let url = format!(
+            "{}/api/database/fields/table/{}/",
+            &self.configuration.base_url, table_id
+        );
+
+        let mut req = self.client.get(url);
+
+        if let Some(token) = &self.configuration.jwt {
+            req = req.header(AUTHORIZATION, format!("JWT {}", token));
+        } else if let Some(api_key) = &self.configuration.database_token {
+            req = req.header(AUTHORIZATION, format!("Token {}", api_key));
+        }
+
+        let resp: Vec<TableField> = req.send().await?.json().await?;
+
+        Ok(resp)
+    }
+
     // Returns a table by its ID.
     pub fn table_by_id(&self, id: u64) -> BaserowTable {
         BaserowTable::default()
@@ -280,6 +301,9 @@ pub struct BaserowTable {
     #[serde(skip)]
     baserow: Option<Baserow>,
 
+    #[serde(skip)]
+    mapper: Option<TableMapper>,
+
     id: Option<u64>,
     pub name: Option<String>,
     order: Option<i64>,
@@ -296,6 +320,19 @@ impl BaserowTable {
 
     fn with_id(mut self, id: u64) -> BaserowTable {
         self.id = Some(id);
+
+        self
+    }
+
+    pub async fn auto_map(mut self) -> BaserowTable {
+        let id = self.id.unwrap();
+
+        let baserow = self.baserow.clone().unwrap();
+        let fields = baserow.table_fields(id).await.unwrap();
+
+        let mapper = TableMapper::new();
+        mapper.clone().map_fields(fields.clone());
+        self.mapper = Some(mapper);
 
         self
     }
@@ -441,6 +478,21 @@ impl BaserowTable {
     }
 }
 
+#[derive(Clone, Deserialize, Serialize, Debug)]
+pub struct TableField {
+    pub id: u64,
+    pub table_id: u64,
+    pub name: String,
+    pub order: u32,
+    pub field_type: String,
+    pub primary: bool,
+    pub read_only: bool,
+    pub immutable_type: bool,
+    pub immutable_properties: bool,
+    pub description: String,
+    pub text_default: String,
+}
+
 pub enum OrderDirection {
     Asc,
     Desc,
@@ -581,7 +633,7 @@ mod tests {
         mock.assert();
     }
 
-/// Tests the `delete` function of the `BaserowTable` struct to ensure it can delete a record successfully.
+    /// Tests the `delete` function of the `BaserowTable` struct to ensure it can delete a record successfully.
     #[tokio::test]
     async fn test_delete_record() {
         let mut server = mockito::Server::new_async().await;
