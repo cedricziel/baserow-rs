@@ -30,4 +30,6 @@ pub enum FileUploadError {
     InvalidContentType,
     #[error("Unexpected status code: {0}")]
     UnexpectedStatusCode(reqwest::StatusCode),
+    #[error("Invalid URL {0}")]
+    InvalidURL(String),
 }

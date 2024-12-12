@@ -4,7 +4,10 @@ use reqwest::{header::AUTHORIZATION, Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{Baserow, BaserowTable, Filter, FilterTriple, OrderDirection};
+use crate::{
+    filter::{Filter, FilterTriple},
+    Baserow, BaserowTable, OrderDirection,
+};
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct RowsResponse {

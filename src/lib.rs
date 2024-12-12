@@ -13,6 +13,7 @@ use tokio_util::codec::{BytesCodec, FramedRead};
 mod api;
 
 pub mod error;
+pub mod filter;
 
 #[derive(Clone)]
 pub struct Configuration {
@@ -225,23 +226,12 @@ impl Baserow {
         }
     }
 
-    pub async fn upload_file_via_url(&self, url: &str) -> Result<api::file::File, Box<dyn Error>> {
+    pub async fn upload_file_via_url(&self, url: &str) -> Result<api::file::File, FileUploadError> {
         // Validate URL format and scheme
-        let parsed_url = url.parse::<reqwest::Url>().map_err(|_| {
-            Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Invalid URL format",
-            ))
-        })?;
-
-        if !["http", "https"].contains(&parsed_url.scheme()) {
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "URL must use HTTP or HTTPS scheme",
-            )));
-        }
-
-        let file_url = url.to_string();
+        let file_url = url
+            .parse::<reqwest::Url>()
+            .map_err(|_| FileUploadError::InvalidURL(url.to_string()))?
+            .to_string();
 
         let upload_request = api::file::UploadFileViaUrlRequest {
             url: file_url.clone(),
@@ -260,14 +250,17 @@ impl Baserow {
             req = req.header(AUTHORIZATION, format!("Token {}", api_key));
         }
 
-        let resp = req.send().await?;
+        let resp = req.send().await;
 
-        match resp.status() {
-            StatusCode::OK => {
-                let json: api::file::File = resp.json().await?;
-                Ok(json)
-            }
-            _ => Err(Box::new(resp.error_for_status().unwrap_err())),
+        match resp {
+            Ok(resp) => match resp.status() {
+                StatusCode::OK => {
+                    let json: api::file::File = resp.json().await?;
+                    Ok(json)
+                }
+                _ => Err(FileUploadError::UnexpectedStatusCode(resp.status())),
+            },
+            Err(e) => Err(FileUploadError::UploadError(e)),
         }
     }
 }
@@ -441,165 +434,6 @@ impl BaserowTable {
 pub enum OrderDirection {
     Asc,
     Desc,
-}
-
-#[derive(Debug)]
-pub enum Filter {
-    Equal,
-    NotEqual,
-    DateIs,
-    DateIsNot,
-    DateIsBefore,
-    DateIsOnOrBefore,
-    DateIsAfter,
-    DateIsOnOrAfter,
-    DateIsWithin,
-    DateEqual,
-    DateNotEqual,
-    DateEqualsToday,
-    DateBeforeToday,
-    DateAfterToday,
-    DateWithinDays,
-    DateWithinWeeks,
-    DateWithinMonths,
-    DateEqualsDaysAgo,
-    DateEqualsMonthsAgo,
-    DateEqualsYearsAgo,
-    DateEqualsWeek,
-    DateEqualsMonth,
-    DateEqualsYear,
-    DateEqualsDayOfMonth,
-    DateBefore,
-    DateBeforeOrEqual,
-    DateAfter,
-    DateAfterOrEqual,
-    DateAfterDaysAgo,
-    HasEmptyValue,
-    HasNotEmptyValue,
-    HasValueEqual,
-    HasNotValueEqual,
-    HasValueContains,
-    HasNotValueContains,
-    HasValueContainsWord,
-    HasNotValueContainsWord,
-    HasValueLengthIsLowerThan,
-    HasAllValuesEqual,
-    HasAnySelectOptionEqual,
-    HasNoneSelectOptionEqual,
-    Contains,
-    ContainsNot,
-    ContainsWord,
-    DoesntContainWord,
-    FilenameContains,
-    HasFileType,
-    FilesLowerThan,
-    LengthIsLowerThan,
-    HigherThan,
-    HigherThanOrEqual,
-    LowerThan,
-    LowerThanOrEqual,
-    IsEvenAndWhole,
-    SingleSelectEqual,
-    SingleSelectNotEqual,
-    SingleSelectIsAnyOf,
-    SingleSelectIsNoneOf,
-    Boolean,
-    LinkRowHas,
-    LinkRowHasNot,
-    LinkRowContains,
-    LinkRowNotContains,
-    MultipleSelectHas,
-    MultipleSelectHasNot,
-    MultipleCollaboratorsHas,
-    MultipleCollaboratorsHasNot,
-    Empty,
-    NotEmpty,
-    UserIs,
-    UserIsNot,
-}
-
-impl Filter {
-    fn as_str(&self) -> &'static str {
-        match self {
-            Filter::Equal => "equal",
-            Filter::NotEqual => "not_equal",
-            Filter::DateIs => "date_is",
-            Filter::DateIsNot => "date_is_not",
-            Filter::DateIsBefore => "date_is_before",
-            Filter::DateIsOnOrBefore => "date_is_on_or_before",
-            Filter::DateIsAfter => "date_is_after",
-            Filter::DateIsOnOrAfter => "date_is_on_or_after",
-            Filter::DateIsWithin => "date_is_within",
-            Filter::DateEqual => "date_equal",
-            Filter::DateNotEqual => "date_not_equal",
-            Filter::DateEqualsToday => "date_equals_today",
-            Filter::DateBeforeToday => "date_before_today",
-            Filter::DateAfterToday => "date_after_today",
-            Filter::DateWithinDays => "date_within_days",
-            Filter::DateWithinWeeks => "date_within_weeks",
-            Filter::DateWithinMonths => "date_within_months",
-            Filter::DateEqualsDaysAgo => "date_equals_days_ago",
-            Filter::DateEqualsMonthsAgo => "date_equals_months_ago",
-            Filter::DateEqualsYearsAgo => "date_equals_years_ago",
-            Filter::DateEqualsWeek => "date_equals_week",
-            Filter::DateEqualsMonth => "date_equals_month",
-            Filter::DateEqualsYear => "date_equals_year",
-            Filter::DateEqualsDayOfMonth => "date_equals_day_of_month",
-            Filter::DateBefore => "date_before",
-            Filter::DateBeforeOrEqual => "date_before_or_equal",
-            Filter::DateAfter => "date_after",
-            Filter::DateAfterOrEqual => "date_after_or_equal",
-            Filter::DateAfterDaysAgo => "date_after_days_ago",
-            Filter::HasEmptyValue => "has_empty_value",
-            Filter::HasNotEmptyValue => "has_not_empty_value",
-            Filter::HasValueEqual => "has_value_equal",
-            Filter::HasNotValueEqual => "has_not_value_equal",
-            Filter::HasValueContains => "has_value_contains",
-            Filter::HasNotValueContains => "has_not_value_contains",
-            Filter::HasValueContainsWord => "has_value_contains_word",
-            Filter::HasNotValueContainsWord => "has_not_value_contains_word",
-            Filter::HasValueLengthIsLowerThan => "has_value_length_is_lower_than",
-            Filter::HasAllValuesEqual => "has_all_values_equal",
-            Filter::HasAnySelectOptionEqual => "has_any_select_option_equal",
-            Filter::HasNoneSelectOptionEqual => "has_none_select_option_equal",
-            Filter::Contains => "contains",
-            Filter::ContainsNot => "contains_not",
-            Filter::ContainsWord => "contains_word",
-            Filter::DoesntContainWord => "doesnt_contain_word",
-            Filter::FilenameContains => "filename_contains",
-            Filter::HasFileType => "has_file_type",
-            Filter::FilesLowerThan => "files_lower_than",
-            Filter::LengthIsLowerThan => "length_is_lower_than",
-            Filter::HigherThan => "higher_than",
-            Filter::HigherThanOrEqual => "higher_than_or_equal",
-            Filter::LowerThan => "lower_than",
-            Filter::LowerThanOrEqual => "lower_than_or_equal",
-            Filter::IsEvenAndWhole => "is_even_and_whole",
-            Filter::SingleSelectEqual => "single_select_equal",
-            Filter::SingleSelectNotEqual => "single_select_not_equal",
-            Filter::SingleSelectIsAnyOf => "single_select_is_any_of",
-            Filter::SingleSelectIsNoneOf => "single_select_is_none_of",
-            Filter::Boolean => "boolean",
-            Filter::LinkRowHas => "link_row_has",
-            Filter::LinkRowHasNot => "link_row_has_not",
-            Filter::LinkRowContains => "link_row_contains",
-            Filter::LinkRowNotContains => "link_row_not_contains",
-            Filter::MultipleSelectHas => "multiple_select_has",
-            Filter::MultipleSelectHasNot => "multiple_select_has_not",
-            Filter::MultipleCollaboratorsHas => "multiple_collaborators_has",
-            Filter::MultipleCollaboratorsHasNot => "multiple_collaborators_has_not",
-            Filter::Empty => "empty",
-            Filter::NotEmpty => "not_empty",
-            Filter::UserIs => "user_is",
-            Filter::UserIsNot => "user_is_not",
-        }
-    }
-}
-
-pub struct FilterTriple {
-    field: String,
-    filter: Filter,
-    value: String,
 }
 
 #[cfg(test)]
