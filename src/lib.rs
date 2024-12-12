@@ -166,7 +166,7 @@ impl BaserowTable {
         if baserow.configuration.jwt.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("JWT {}", &baserow.configuration.api_key.unwrap()),
+                format!("JWT {}", &baserow.configuration.jwt.unwrap()),
             );
         } else if baserow.configuration.api_key.is_some() {
             req = req.header(
