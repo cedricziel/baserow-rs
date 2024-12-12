@@ -199,6 +199,8 @@ impl Baserow {
             req = req.header(AUTHORIZATION, format!("JWT {}", token));
         } else if let Some(api_key) = &self.configuration.database_token {
             req = req.header(AUTHORIZATION, format!("Token {}", api_key));
+        } else {
+            return Err("No authentication token provided".into());
         }
 
         let resp: Vec<TableField> = req.send().await?.json().await?;
