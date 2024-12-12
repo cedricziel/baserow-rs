@@ -14,7 +14,7 @@ impl TableMapper {
         Self::default()
     }
 
-    pub fn map_fields(mut self, fields: Vec<TableField>) {
+    pub fn map_fields(&mut self, fields: Vec<TableField>) {
         fields.iter().for_each(|field| {
             self.ids_to_names.insert(field.id, field.name.clone());
             self.names_to_ids.insert(field.name.clone(), field.id);
