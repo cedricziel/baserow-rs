@@ -15,6 +15,7 @@ serde_json = "1.0.133"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-util = { version = "0.7.3", features = ["codec"] }
 thiserror = "2.0.6"
+mime_guess = "2.0.5"
 
 [dev-dependencies]
 mockito = "1.6.0"

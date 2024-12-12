@@ -5,7 +5,11 @@ use api::{
     table::RowRequestBuilder,
 };
 use error::{FileUploadError, TokenAuthError};
-use reqwest::{header::AUTHORIZATION, multipart, Body, Client, StatusCode};
+use reqwest::{
+    header::AUTHORIZATION,
+    multipart::{self, Form},
+    Body, Client, StatusCode,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio_util::codec::{BytesCodec, FramedRead};
@@ -188,7 +192,11 @@ impl Baserow {
             .with_baserow(self.clone())
     }
 
-    pub async fn upload_file(&self, file: File) -> Result<api::file::File, FileUploadError> {
+    pub async fn upload_file(
+        &self,
+        file: File,
+        filename: String,
+    ) -> Result<api::file::File, FileUploadError> {
         let url = format!(
             "{}/api/user-files/upload-file/",
             &self.configuration.base_url
@@ -198,11 +206,13 @@ impl Baserow {
         let stream = FramedRead::new(file, BytesCodec::new());
         let file_body = Body::wrap_stream(stream);
 
-        let file_part = multipart::Part::stream(file_body)
-            .file_name("gitignore.txt")
-            .mime_str("text/plain")?;
+        let mime_type = mime_guess::from_path(&filename).first_or_octet_stream();
 
-        let form = reqwest::multipart::Form::new().part("file", file_part);
+        let file_part = multipart::Part::stream(file_body)
+            .file_name(filename)
+            .mime_str(mime_type.as_ref())?;
+
+        let form = Form::new().part("file", file_part);
 
         let mut req = self.client.post(url);
 
@@ -751,7 +761,7 @@ mod tests {
         let baserow = Baserow::with_configuration(configuration);
 
         let file = File::open(".gitignore").unwrap();
-        let result = baserow.upload_file(file).await;
+        let result = baserow.upload_file(file, "image.png".to_string()).await;
         assert!(result.is_ok());
 
         let uploaded_file = result.unwrap();
