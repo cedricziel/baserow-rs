@@ -326,17 +326,17 @@ impl BaserowTable {
         self
     }
 
-    pub async fn auto_map(mut self) -> BaserowTable {
-        let id = self.id.unwrap();
+    pub async fn auto_map(mut self) -> Result<BaserowTable, Box<dyn Error>> {
+        let id = self.id.ok_or("Table ID is missing")?;
 
-        let baserow = self.baserow.clone().unwrap();
-        let fields = baserow.table_fields(id).await.unwrap();
+        let baserow = self.baserow.clone().ok_or("Baserow instance is missing")?;
+        let fields = baserow.table_fields(id).await?;
 
         let mapper = TableMapper::new();
         mapper.clone().map_fields(fields.clone());
         self.mapper = Some(mapper);
 
-        self
+        Ok(self)
     }
 
     pub fn rows(self) -> RowRequestBuilder {
