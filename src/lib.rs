@@ -491,8 +491,8 @@ pub struct TableField {
     pub read_only: bool,
     pub immutable_type: bool,
     pub immutable_properties: bool,
-    pub description: String,
-    pub text_default: String,
+    pub description: Option<String>,
+    pub text_default: Option<String>,
 }
 
 pub enum OrderDirection {
