@@ -206,8 +206,8 @@ impl Baserow {
 
         if let Some(token) = &self.configuration.jwt {
             req = req.header(AUTHORIZATION, format!("JWT {}", token));
-        } else if let Some(database_token) = &self.configuration.database_token {
-            req = req.header(AUTHORIZATION, format!("Token {}", database_token));
+        } else if let Some(token) = &self.configuration.database_token {
+            req = req.header(AUTHORIZATION, format!("Token {}", token));
         } else {
             return Err("No authentication token provided".into());
         }
