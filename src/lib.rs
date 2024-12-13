@@ -507,13 +507,10 @@ pub struct TableField {
     pub table_id: u64,
     pub name: String,
     pub order: u32,
-    pub field_type: String,
+    pub r#type: String,
     pub primary: bool,
     pub read_only: bool,
-    pub immutable_type: bool,
-    pub immutable_properties: bool,
     pub description: Option<String>,
-    pub text_default: Option<String>,
 }
 
 pub enum OrderDirection {
@@ -855,22 +852,37 @@ mod tests {
             .with_header(AUTHORIZATION, format!("Token {}", "123").as_str())
             .with_body(
                 r#"[
-
-                        {
-                            "id": 123,
-                            "table_id": 1234,
-                            "name": "Field 1",
-                            "type": "text",
-                            "order": 0
-                        },
-                        {
-                            "id": 456,
-                            "table_id": 1234,
-                            "name": "Field 2",
-                            "type": "text",
-                            "order": 1
-                        }
-                    ]"#,
+    {
+        "id": 1529,
+        "table_id": 1234,
+        "name": "Name",
+        "order": 0,
+        "type": "text",
+        "primary": true,
+        "read_only": false,
+        "description": "A sample description"
+    },
+    {
+        "id": 6499,
+        "table_id": 1234,
+        "name": "Field 2",
+        "order": 1,
+        "type": "last_modified",
+        "primary": false,
+        "read_only": true,
+        "description": "A sample description"
+    },
+    {
+        "id": 6500,
+        "table_id": 1234,
+        "name": "Datei",
+        "order": 2,
+        "type": "file",
+        "primary": false,
+        "read_only": false,
+        "description": "A sample description"
+    }
+]"#,
             )
             .create();
 
@@ -888,14 +900,16 @@ mod tests {
 
         let result = baserow.table_fields(1234).await;
 
+        print!("result: {:#?}", result);
+
         assert!(result.is_ok());
 
         let fields = result.unwrap();
-        assert_eq!(fields.len(), 2);
-        assert_eq!(fields[0].id, 123);
+        assert_eq!(fields.len(), 3);
+        assert_eq!(fields[0].id, 1529);
         assert_eq!(fields[0].table_id, 1234);
-        assert_eq!(fields[0].name, "Field 1");
-        assert_eq!(fields[1].id, 456);
+        assert_eq!(fields[0].name, "Name");
+        assert_eq!(fields[1].id, 6499);
         assert_eq!(fields[1].table_id, 1234);
         assert_eq!(fields[1].name, "Field 2");
 
