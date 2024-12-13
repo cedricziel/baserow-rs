@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/cedricziel/baserow-rs/compare/v0.4.0...v0.5.0) (2024-12-13)
+
+
+### Features
+
+* implement table fields retrieval and mapping functionality ([#14](https://github.com/cedricziel/baserow-rs/issues/14)) ([3c31cd4](https://github.com/cedricziel/baserow-rs/commit/3c31cd47b098ac6cd7c494ef2e5f5f084dfab2c0))
+
 ## [0.4.0](https://github.com/cedricziel/baserow-rs/compare/v0.3.0...v0.4.0) (2024-12-12)
 
 
