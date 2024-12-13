@@ -187,6 +187,15 @@ impl Baserow {
         }
     }
 
+    /// Retrieves all fields for a given table.
+    ///
+    /// This function sends a GET request to the Baserow API's
+    /// `/api/database/fields/table/{table_id}/` endpoint and returns a vector
+    /// of `TableField`s.
+    ///
+    /// If the request is successful (200), the JSON response is parsed into a
+    /// vector of `TableField`s and returned. Otherwise, the error message is
+    /// returned as a `Box<dyn Error>`.
     pub async fn table_fields(&self, table_id: u64) -> Result<Vec<TableField>, Box<dyn Error>> {
         let url = format!(
             "{}/api/database/fields/table/{}/",
@@ -197,15 +206,27 @@ impl Baserow {
 
         if let Some(token) = &self.configuration.jwt {
             req = req.header(AUTHORIZATION, format!("JWT {}", token));
-        } else if let Some(api_key) = &self.configuration.database_token {
-            req = req.header(AUTHORIZATION, format!("Token {}", api_key));
+        } else if let Some(database_token) = &self.configuration.database_token {
+            req = req.header(AUTHORIZATION, format!("Token {}", database_token));
         } else {
             return Err("No authentication token provided".into());
         }
 
-        let resp: Vec<TableField> = req.send().await?.json().await?;
-
-        Ok(resp)
+        let resp = req.send().await?;
+        match resp.status() {
+            StatusCode::OK => {
+                let fields: Vec<TableField> = resp.json().await?;
+                Ok(fields)
+            }
+            status => {
+                let error_text = resp.text().await?;
+                Err(format!(
+                    "Failed to retrieve table fields (status: {}): {}",
+                    status, error_text
+                )
+                .into())
+            }
+        }
     }
 
     // Returns a table by its ID.
@@ -818,6 +839,59 @@ mod tests {
 
         let uploaded_file = result.unwrap();
         assert_eq!(uploaded_file.name, "VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png".to_string());
+
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_table_fields() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let mock = server
+            .mock("GET", "/api/database/fields/table/1234/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_header(AUTHORIZATION, format!("Token {}", "123").as_str())
+            .with_body(
+                r#"[
+
+                        {
+                            "id": 123,
+                            "table_id": 1234,
+                            "name": "Field 1",
+                            "type": "text",
+                            "order": 0
+                        },
+                        {
+                            "id": 456,
+                            "table_id": 1234,
+                            "name": "Field 2",
+                            "type": "text",
+                            "order": 1
+                        }
+                    ]"#,
+            )
+            .create();
+
+        let configuration = Configuration {
+            base_url: mock_url,
+            database_token: Some("123".to_string()),
+            email: None,
+            password: None,
+            jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
+        };
+        let baserow = Baserow::with_configuration(configuration);
+
+        let result = baserow.table_fields(1234).await;
+
+        assert!(result.is_ok());
+
+        // let fields = result.unwrap();
+        //assert_eq!(fields.len(), 2);
 
         mock.assert();
     }
