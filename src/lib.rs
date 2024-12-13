@@ -890,8 +890,14 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // let fields = result.unwrap();
-        //assert_eq!(fields.len(), 2);
+        let fields = result.unwrap();
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0].id, 123);
+        assert_eq!(fields[0].table_id, 1234);
+        assert_eq!(fields[0].name, "Field 1");
+        assert_eq!(fields[1].id, 456);
+        assert_eq!(fields[1].table_id, 1234);
+        assert_eq!(fields[1].name, "Field 2");
 
         mock.assert();
     }
