@@ -354,7 +354,7 @@ impl BaserowTable {
         let fields = baserow.table_fields(id).await?;
 
         let mapper = TableMapper::new();
-        mapper.clone().map_fields(fields.clone());
+        mapper.map_fields(fields);
         self.mapper = Some(mapper);
 
         Ok(self)
