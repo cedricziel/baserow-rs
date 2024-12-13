@@ -5,6 +5,7 @@ use api::{
     table::RowRequestBuilder,
 };
 use error::{FileUploadError, TokenAuthError};
+use mapper::TableMapper;
 use reqwest::{
     header::AUTHORIZATION,
     multipart::{self, Form},
@@ -18,6 +19,7 @@ mod api;
 
 pub mod error;
 pub mod filter;
+pub mod mapper;
 
 #[derive(Clone)]
 pub struct Configuration {
@@ -185,6 +187,48 @@ impl Baserow {
         }
     }
 
+    /// Retrieves all fields for a given table.
+    ///
+    /// This function sends a GET request to the Baserow API's
+    /// `/api/database/fields/table/{table_id}/` endpoint and returns a vector
+    /// of `TableField`s.
+    ///
+    /// If the request is successful (200), the JSON response is parsed into a
+    /// vector of `TableField`s and returned. Otherwise, the error message is
+    /// returned as a `Box<dyn Error>`.
+    pub async fn table_fields(&self, table_id: u64) -> Result<Vec<TableField>, Box<dyn Error>> {
+        let url = format!(
+            "{}/api/database/fields/table/{}/",
+            &self.configuration.base_url, table_id
+        );
+
+        let mut req = self.client.get(url);
+
+        if let Some(token) = &self.configuration.jwt {
+            req = req.header(AUTHORIZATION, format!("JWT {}", token));
+        } else if let Some(token) = &self.configuration.database_token {
+            req = req.header(AUTHORIZATION, format!("Token {}", token));
+        } else {
+            return Err("No authentication token provided".into());
+        }
+
+        let resp = req.send().await?;
+        match resp.status() {
+            StatusCode::OK => {
+                let fields: Vec<TableField> = resp.json().await?;
+                Ok(fields)
+            }
+            status => {
+                let error_text = resp.text().await?;
+                Err(format!(
+                    "Failed to retrieve table fields (status: {}): {}",
+                    status, error_text
+                )
+                .into())
+            }
+        }
+    }
+
     // Returns a table by its ID.
     pub fn table_by_id(&self, id: u64) -> BaserowTable {
         BaserowTable::default()
@@ -280,6 +324,9 @@ pub struct BaserowTable {
     #[serde(skip)]
     baserow: Option<Baserow>,
 
+    #[serde(skip)]
+    mapper: Option<TableMapper>,
+
     id: Option<u64>,
     pub name: Option<String>,
     order: Option<i64>,
@@ -298,6 +345,19 @@ impl BaserowTable {
         self.id = Some(id);
 
         self
+    }
+
+    pub async fn auto_map(mut self) -> Result<BaserowTable, Box<dyn Error>> {
+        let id = self.id.ok_or("Table ID is missing")?;
+
+        let baserow = self.baserow.clone().ok_or("Baserow instance is missing")?;
+        let fields = baserow.table_fields(id).await?;
+
+        let mut mapper = TableMapper::new();
+        mapper.map_fields(fields.clone());
+        self.mapper = Some(mapper);
+
+        Ok(self)
     }
 
     pub fn rows(self) -> RowRequestBuilder {
@@ -441,6 +501,18 @@ impl BaserowTable {
     }
 }
 
+#[derive(Clone, Deserialize, Serialize, Debug)]
+pub struct TableField {
+    pub id: u64,
+    pub table_id: u64,
+    pub name: String,
+    pub order: u32,
+    pub r#type: String,
+    pub primary: bool,
+    pub read_only: bool,
+    pub description: Option<String>,
+}
+
 pub enum OrderDirection {
     Asc,
     Desc,
@@ -581,7 +653,7 @@ mod tests {
         mock.assert();
     }
 
-/// Tests the `delete` function of the `BaserowTable` struct to ensure it can delete a record successfully.
+    /// Tests the `delete` function of the `BaserowTable` struct to ensure it can delete a record successfully.
     #[tokio::test]
     async fn test_delete_record() {
         let mut server = mockito::Server::new_async().await;
@@ -764,6 +836,82 @@ mod tests {
 
         let uploaded_file = result.unwrap();
         assert_eq!(uploaded_file.name, "VXotniBOVm8tbstZkKsMKbj2Qg7KmPvn_39d354a76abe56baaf569ad87d0333f58ee4bf3eed368e3b9dc736fd18b09dfd.png".to_string());
+
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_table_fields() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let mock = server
+            .mock("GET", "/api/database/fields/table/1234/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_header(AUTHORIZATION, format!("Token {}", "123").as_str())
+            .with_body(
+                r#"[
+    {
+        "id": 1529,
+        "table_id": 1234,
+        "name": "Name",
+        "order": 0,
+        "type": "text",
+        "primary": true,
+        "read_only": false,
+        "description": "A sample description"
+    },
+    {
+        "id": 6499,
+        "table_id": 1234,
+        "name": "Field 2",
+        "order": 1,
+        "type": "last_modified",
+        "primary": false,
+        "read_only": true,
+        "description": "A sample description"
+    },
+    {
+        "id": 6500,
+        "table_id": 1234,
+        "name": "Datei",
+        "order": 2,
+        "type": "file",
+        "primary": false,
+        "read_only": false,
+        "description": "A sample description"
+    }
+]"#,
+            )
+            .create();
+
+        let configuration = Configuration {
+            base_url: mock_url,
+            database_token: Some("123".to_string()),
+            email: None,
+            password: None,
+            jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
+        };
+        let baserow = Baserow::with_configuration(configuration);
+
+        let result = baserow.table_fields(1234).await;
+
+        print!("result: {:#?}", result);
+
+        assert!(result.is_ok());
+
+        let fields = result.unwrap();
+        assert_eq!(fields.len(), 3);
+        assert_eq!(fields[0].id, 1529);
+        assert_eq!(fields[0].table_id, 1234);
+        assert_eq!(fields[0].name, "Name");
+        assert_eq!(fields[1].id, 6499);
+        assert_eq!(fields[1].table_id, 1234);
+        assert_eq!(fields[1].name, "Field 2");
 
         mock.assert();
     }
