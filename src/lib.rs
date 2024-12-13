@@ -353,8 +353,8 @@ impl BaserowTable {
         let baserow = self.baserow.clone().ok_or("Baserow instance is missing")?;
         let fields = baserow.table_fields(id).await?;
 
-        let mapper = TableMapper::new();
-        mapper.map_fields(fields);
+        let mut mapper = TableMapper::new();
+        mapper.map_fields(fields.clone());
         self.mapper = Some(mapper);
 
         Ok(self)
