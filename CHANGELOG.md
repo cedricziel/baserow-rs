@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/cedricziel/baserow-rs/compare/v0.5.0...v0.5.1) (2024-12-19)
+
+
+### Bug Fixes
+
+* make fields public ([f1f711d](https://github.com/cedricziel/baserow-rs/commit/f1f711d5497b9da90dfaab0199b796472ca1344f))
+
 ## [0.5.0](https://github.com/cedricziel/baserow-rs/compare/v0.4.0...v0.5.0) (2024-12-13)
 
 
