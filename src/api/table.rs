@@ -11,10 +11,10 @@ use crate::{
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct RowsResponse {
-    count: i32,
-    next: Option<String>,
-    previous: Option<String>,
-    results: Vec<HashMap<String, Value>>,
+    pub count: i32,
+    pub next: Option<String>,
+    pub previous: Option<String>,
+    pub results: Vec<HashMap<String, Value>>,
 }
 
 pub struct RowRequestBuilder {
