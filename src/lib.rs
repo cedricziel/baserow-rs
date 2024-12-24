@@ -1,8 +1,42 @@
+//! A Rust client for the Baserow API
+//!
+//! This crate provides a strongly-typed client for interacting with Baserow's REST API.
+//! It supports authentication, table operations, file uploads, and more.
+//!
+//! # Example
+//! ```no_run
+//! use baserow_rs::{ConfigBuilder, Baserow, BaserowTableOperations, api::client::BaserowClient};
+//! use std::collections::HashMap;
+//! use serde_json::Value;
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     // Create a configuration
+//!     let config = ConfigBuilder::new()
+//!         .base_url("https://api.baserow.io")
+//!         .api_key("your-api-key")
+//!         .build();
+//!
+//!     // Initialize the client
+//!     let baserow = Baserow::with_configuration(config);
+//!
+//!     // Get a table reference
+//!     let table = baserow.table_by_id(1234);
+//!
+//!     // Create a record
+//!     let mut data = HashMap::new();
+//!     data.insert("Name".to_string(), Value::String("Test".to_string()));
+//!
+//!     let result = table.create_one(data).await.unwrap();
+//!     println!("Created record: {:?}", result);
+//! }
+//! ```
+
 use std::{collections::HashMap, error::Error, fs::File};
 
 use api::{
     authentication::{LoginRequest, TokenResponse, User},
-    table::RowRequestBuilder,
+    client::BaserowClient,
 };
 use error::{FileUploadError, TokenAuthError};
 use mapper::TableMapper;
@@ -15,12 +49,19 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio_util::codec::{BytesCodec, FramedRead};
 
-mod api;
+pub mod api;
+
+#[macro_use]
+extern crate async_trait;
 
 pub mod error;
 pub mod filter;
 pub mod mapper;
 
+/// Configuration for the Baserow client
+///
+/// This struct holds all the configuration options needed to connect to a Baserow instance,
+/// including authentication credentials and API endpoints.
 #[derive(Clone)]
 pub struct Configuration {
     base_url: String,
@@ -36,13 +77,25 @@ pub struct Configuration {
     user: Option<User>,
 }
 
+/// Builder for creating Configuration instances
+///
+/// Provides a fluent interface for constructing Configuration objects with the required parameters.
+///
+/// # Example
+/// ```
+/// use baserow_rs::ConfigBuilder;
+///
+/// let config = ConfigBuilder::new()
+///     .base_url("https://api.baserow.io")
+///     .api_key("your-api-key")
+///     .build();
+/// ```
 #[derive(Default)]
 pub struct ConfigBuilder {
     base_url: Option<String>,
     api_key: Option<String>,
     email: Option<String>,
     password: Option<String>,
-    jwt: Option<String>,
 }
 
 impl ConfigBuilder {
@@ -52,7 +105,6 @@ impl ConfigBuilder {
             api_key: None,
             email: None,
             password: None,
-            jwt: None,
         }
     }
 
@@ -93,6 +145,10 @@ impl ConfigBuilder {
     }
 }
 
+/// Main client for interacting with the Baserow API
+///
+/// This struct implements the BaserowClient trait and provides methods for all API operations.
+/// It handles authentication, request signing, and maintains the client state.
 #[derive(Clone)]
 pub struct Baserow {
     configuration: Configuration,
@@ -146,10 +202,19 @@ impl Baserow {
             client: self.client.clone(),
         }
     }
+}
 
-    /// Authenticates an existing user based on their email and their password.
-    /// If successful, an access token and a refresh token will be returned.
-    pub async fn token_auth(&self) -> Result<Baserow, TokenAuthError> {
+#[async_trait]
+impl BaserowClient for Baserow {
+    fn get_configuration(&self) -> Configuration {
+        self.configuration.clone()
+    }
+
+    fn get_client(&self) -> Client {
+        self.client.clone()
+    }
+
+    async fn token_auth(&self) -> Result<Box<dyn BaserowClient>, TokenAuthError> {
         let url = format!("{}/api/user/token-auth/", &self.configuration.base_url);
 
         let email = self
@@ -176,27 +241,19 @@ impl Baserow {
         match resp.status() {
             StatusCode::OK => {
                 let token_response: TokenResponse = resp.json().await?;
-                Ok(self
+                let client = self
                     .clone()
                     .with_database_token(token_response.token)
                     .with_access_token(token_response.access_token)
                     .with_refresh_token(token_response.refresh_token)
-                    .with_user(token_response.user))
+                    .with_user(token_response.user);
+                Ok(Box::new(client) as Box<dyn BaserowClient>)
             }
             _ => Err(TokenAuthError::AuthenticationFailed(resp.text().await?)),
         }
     }
 
-    /// Retrieves all fields for a given table.
-    ///
-    /// This function sends a GET request to the Baserow API's
-    /// `/api/database/fields/table/{table_id}/` endpoint and returns a vector
-    /// of `TableField`s.
-    ///
-    /// If the request is successful (200), the JSON response is parsed into a
-    /// vector of `TableField`s and returned. Otherwise, the error message is
-    /// returned as a `Box<dyn Error>`.
-    pub async fn table_fields(&self, table_id: u64) -> Result<Vec<TableField>, Box<dyn Error>> {
+    async fn table_fields(&self, table_id: u64) -> Result<Vec<TableField>, Box<dyn Error>> {
         let url = format!(
             "{}/api/database/fields/table/{}/",
             &self.configuration.base_url, table_id
@@ -229,14 +286,13 @@ impl Baserow {
         }
     }
 
-    // Returns a table by its ID.
-    pub fn table_by_id(&self, id: u64) -> BaserowTable {
+    fn table_by_id(&self, id: u64) -> BaserowTable {
         BaserowTable::default()
             .with_id(id)
             .with_baserow(self.clone())
     }
 
-    pub async fn upload_file(
+    async fn upload_file(
         &self,
         file: File,
         filename: String,
@@ -280,7 +336,7 @@ impl Baserow {
         }
     }
 
-    pub async fn upload_file_via_url(&self, url: &str) -> Result<api::file::File, FileUploadError> {
+    async fn upload_file_via_url(&self, url: &str) -> Result<api::file::File, FileUploadError> {
         // Validate URL format and scheme
         let file_url = url
             .parse::<reqwest::Url>()
@@ -319,6 +375,10 @@ impl Baserow {
     }
 }
 
+/// Represents a table in Baserow
+///
+/// This struct provides methods for interacting with a specific table, including
+/// creating, reading, updating and deleting records.
 #[derive(Deserialize, Serialize, Default, Clone)]
 pub struct BaserowTable {
     #[serde(skip)]
@@ -331,176 +391,25 @@ pub struct BaserowTable {
     pub name: Option<String>,
     order: Option<i64>,
     database_id: Option<i64>,
-    // data_sync: DataSync,
 }
 
 impl BaserowTable {
     fn with_baserow(mut self, baserow: Baserow) -> BaserowTable {
         self.baserow = Some(baserow);
-
         self
     }
 
     fn with_id(mut self, id: u64) -> BaserowTable {
         self.id = Some(id);
-
         self
-    }
-
-    pub async fn auto_map(mut self) -> Result<BaserowTable, Box<dyn Error>> {
-        let id = self.id.ok_or("Table ID is missing")?;
-
-        let baserow = self.baserow.clone().ok_or("Baserow instance is missing")?;
-        let fields = baserow.table_fields(id).await?;
-
-        let mut mapper = TableMapper::new();
-        mapper.map_fields(fields.clone());
-        self.mapper = Some(mapper);
-
-        Ok(self)
-    }
-
-    pub fn rows(self) -> RowRequestBuilder {
-        RowRequestBuilder::new()
-            .with_baserow(self.baserow.clone().unwrap())
-            .with_table(self.clone())
-    }
-
-    pub async fn create_one(
-        self,
-        data: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, Box<dyn Error>> {
-        let baserow = self.baserow.expect("Baserow instance is missing");
-
-        let url = format!(
-            "{}/api/database/rows/table/{}/",
-            &baserow.configuration.base_url,
-            self.id.unwrap()
-        );
-
-        let mut req = baserow.client.post(url);
-
-        if baserow.configuration.jwt.is_some() {
-            req = req.header(
-                AUTHORIZATION,
-                format!("JWT {}", &baserow.configuration.jwt.unwrap()),
-            );
-        } else if baserow.configuration.database_token.is_some() {
-            req = req.header(
-                AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.database_token.unwrap()),
-            );
-        }
-
-        let resp = req.json(&data).send().await?;
-
-        match resp.status() {
-            StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
-            _ => Err(Box::new(resp.error_for_status().unwrap_err())),
-        }
-    }
-
-    pub async fn get_one(self, id: u64) -> Result<HashMap<String, Value>, Box<dyn Error>> {
-        let baserow = self.baserow.expect("Baserow instance is missing");
-
-        let url = format!(
-            "{}/api/database/rows/table/{}/{}/",
-            &baserow.configuration.base_url,
-            self.id.unwrap(),
-            id
-        );
-
-        let mut req = baserow.client.get(url);
-
-        if baserow.configuration.jwt.is_some() {
-            req = req.header(
-                AUTHORIZATION,
-                format!("JWT {}", &baserow.configuration.jwt.unwrap()),
-            );
-        } else if baserow.configuration.database_token.is_some() {
-            req = req.header(
-                AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.database_token.unwrap()),
-            );
-        }
-
-        let resp = req.send().await?;
-
-        match resp.status() {
-            StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
-            _ => Err(Box::new(resp.error_for_status().unwrap_err())),
-        }
-    }
-
-    pub async fn update(
-        self,
-        id: u64,
-        data: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, Box<dyn Error>> {
-        let baserow = self.baserow.expect("Baserow instance is missing");
-
-        let url = format!(
-            "{}/api/database/rows/table/{}/{}/",
-            &baserow.configuration.base_url,
-            self.id.unwrap(),
-            id
-        );
-
-        let mut req = baserow.client.patch(url);
-
-        if baserow.configuration.jwt.is_some() {
-            req = req.header(
-                AUTHORIZATION,
-                format!("JWT {}", &baserow.configuration.jwt.unwrap()),
-            );
-        } else if baserow.configuration.database_token.is_some() {
-            req = req.header(
-                AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.database_token.unwrap()),
-            );
-        }
-
-        let resp = req.json(&data).send().await?;
-
-        match resp.status() {
-            StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
-            _ => Err(Box::new(resp.error_for_status().unwrap_err())),
-        }
-    }
-
-    pub async fn delete(self, id: u64) -> Result<(), Box<dyn Error>> {
-        let baserow = self.baserow.expect("Baserow instance is missing");
-
-        let url = format!(
-            "{}/api/database/rows/table/{}/{}/",
-            &baserow.configuration.base_url,
-            self.id.unwrap(),
-            id
-        );
-
-        let mut req = baserow.client.delete(url);
-
-        if baserow.configuration.jwt.is_some() {
-            req = req.header(
-                AUTHORIZATION,
-                format!("JWT {}", &baserow.configuration.jwt.unwrap()),
-            );
-        } else if baserow.configuration.database_token.is_some() {
-            req = req.header(
-                AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.database_token.unwrap()),
-            );
-        }
-
-        let resp = req.send().await?;
-
-        match resp.status() {
-            StatusCode::OK => Ok(()),
-            _ => Err(Box::new(resp.error_for_status().unwrap_err())),
-        }
     }
 }
 
+pub use api::table_operations::BaserowTableOperations;
+
+/// Represents a field in a Baserow table
+///
+/// Contains metadata about a table column including its type, name, and other attributes.
 #[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct TableField {
     pub id: u64,
@@ -513,6 +422,9 @@ pub struct TableField {
     pub description: Option<String>,
 }
 
+/// Specifies the sort direction for table queries
+///
+/// Used when ordering table results to determine ascending or descending order.
 pub enum OrderDirection {
     Asc,
     Desc,
@@ -653,7 +565,6 @@ mod tests {
         mock.assert();
     }
 
-    /// Tests the `delete` function of the `BaserowTable` struct to ensure it can delete a record successfully.
     #[tokio::test]
     async fn test_delete_record() {
         let mut server = mockito::Server::new_async().await;
@@ -777,7 +688,10 @@ mod tests {
 
         let logged_in_baserow = result.unwrap();
         assert_eq!(
-            logged_in_baserow.configuration.database_token.unwrap(),
+            logged_in_baserow
+                .get_configuration()
+                .database_token
+                .unwrap(),
             "string"
         );
 
