@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/cedricziel/baserow-rs/compare/v0.5.1...v0.6.0) (2024-12-24)
+
+
+### Features
+
+* make library testable ([#21](https://github.com/cedricziel/baserow-rs/issues/21)) ([98acdf2](https://github.com/cedricziel/baserow-rs/commit/98acdf297bcda939cc4fb8a1f27efa2fff09551d))
+
 ## [0.5.1](https://github.com/cedricziel/baserow-rs/compare/v0.5.0...v0.5.1) (2024-12-19)
 
 
