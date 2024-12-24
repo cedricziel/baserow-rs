@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/cedricziel/baserow-rs/compare/v0.6.0...v0.7.0) (2024-12-24)
+
+
+### Features
+
+* add pagination ([#23](https://github.com/cedricziel/baserow-rs/issues/23)) ([6cdad0f](https://github.com/cedricziel/baserow-rs/commit/6cdad0f05ba5f1b54348381305370e175536b55e))
+
 ## [0.6.0](https://github.com/cedricziel/baserow-rs/compare/v0.5.1...v0.6.0) (2024-12-24)
 
 
