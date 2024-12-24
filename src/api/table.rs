@@ -24,14 +24,44 @@ pub struct RowsResponse {
     pub results: Vec<HashMap<String, Value>>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{BaserowTableOperations, ConfigBuilder};
+
+    #[test]
+    fn test_pagination_parameters() {
+        let table = BaserowTable {
+            id: Some(1234),
+            database_id: Some(1),
+            name: Some("Test".to_string()),
+            baserow: None,
+            mapper: None,
+            order: None,
+        };
+
+        let builder = RowRequestBuilder::new()
+            .with_table(table)
+            .page_size(25)
+            .offset(50);
+
+        // Access internal state to verify pagination parameters
+        assert_eq!(builder.page_size, Some(25));
+        assert_eq!(builder.offset, Some(50));
+    }
+}
+
 /// Builder for constructing table row queries
 ///
 /// Provides a fluent interface for building queries with filtering, sorting,
 /// and other options.
 ///
-/// # Example
+/// # Examples
+///
+/// Basic query with filters and sorting:
 /// ```no_run
-/// use baserow_rs::{ConfigBuilder, Baserow, BaserowTableOperations, OrderDirection, filter::Filter, api::client::BaserowClient};
+/// use baserow_rs::{ConfigBuilder, Baserow, BaserowTableOperations, OrderDirection, filter::Filter};
+/// use baserow_rs::api::client::BaserowClient;
 ///
 /// #[tokio::main]
 /// async fn main() {
@@ -54,11 +84,43 @@ pub struct RowsResponse {
 ///     println!("Found {} matching rows", results.count);
 /// }
 /// ```
+///
+/// Paginated query:
+/// ```no_run
+/// # use baserow_rs::{ConfigBuilder, Baserow, BaserowTableOperations};
+/// # use baserow_rs::api::client::BaserowClient;
+/// # #[tokio::main]
+/// # async fn main() {
+/// #     let baserow = Baserow::with_configuration(ConfigBuilder::new().build());
+/// #     let table = baserow.table_by_id(1234);
+/// // Get first page of 25 rows
+/// let page1 = table.clone().rows()
+///     .page_size(25)
+///     .offset(0)
+///     .get()
+///     .await
+///     .unwrap();
+///
+/// // Get second page
+/// let page2 = table.clone().rows()
+///     .page_size(25)
+///     .offset(25)
+///     .get()
+///     .await
+///     .unwrap();
+///
+/// println!("Total rows: {}", page1.count);
+/// println!("First page rows: {}", page1.results.len());
+/// println!("Second page rows: {}", page2.results.len());
+/// # }
+/// ```
 pub struct RowRequestBuilder {
     baserow: Option<Baserow>,
     table: Option<BaserowTable>,
     order: Option<HashMap<String, OrderDirection>>,
     filter: Option<Vec<FilterTriple>>,
+    page_size: Option<i32>,
+    offset: Option<i32>,
 }
 
 impl RowRequestBuilder {
@@ -68,6 +130,46 @@ impl RowRequestBuilder {
             table: None,
             order: None,
             filter: None,
+            page_size: None,
+            offset: None,
+        }
+    }
+
+    /// Set the number of rows to return per page
+    ///
+    /// # Arguments
+    /// * `size` - The number of rows to return per page
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use baserow_rs::{BaserowTable, BaserowTableOperations};
+    /// # let table = BaserowTable::default();
+    /// table.rows()
+    ///     .page_size(25);
+    /// ```
+    pub fn page_size(self, size: i32) -> Self {
+        Self {
+            page_size: Some(size),
+            ..self
+        }
+    }
+
+    /// Set the offset for pagination
+    ///
+    /// # Arguments
+    /// * `offset` - The number of rows to skip
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use baserow_rs::{BaserowTable, BaserowTableOperations};
+    /// # let table = BaserowTable::default();
+    /// table.rows()
+    ///     .offset(50);
+    /// ```
+    pub fn offset(self, offset: i32) -> Self {
+        Self {
+            offset: Some(offset),
+            ..self
         }
     }
 
@@ -216,6 +318,14 @@ impl RowRequestBuilder {
                     triple.value,
                 )]);
             }
+        }
+
+        if let Some(size) = self.page_size {
+            req = req.query(&[("size", size.to_string())]);
+        }
+
+        if let Some(offset) = self.offset {
+            req = req.query(&[("offset", offset.to_string())]);
         }
 
         let resp = req.send().await?;
