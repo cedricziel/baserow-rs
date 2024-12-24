@@ -3,7 +3,6 @@ use std::{collections::HashMap, error::Error, fs::File};
 use api::{
     authentication::{LoginRequest, TokenResponse, User},
     client::BaserowClient,
-    table::RowRequestBuilder,
 };
 use error::{FileUploadError, TokenAuthError};
 use mapper::TableMapper;
@@ -333,175 +332,21 @@ pub struct BaserowTable {
     pub name: Option<String>,
     order: Option<i64>,
     database_id: Option<i64>,
-    // data_sync: DataSync,
 }
 
 impl BaserowTable {
     fn with_baserow(mut self, baserow: Baserow) -> BaserowTable {
         self.baserow = Some(baserow);
-
         self
     }
 
     fn with_id(mut self, id: u64) -> BaserowTable {
         self.id = Some(id);
-
         self
     }
-
-    pub async fn auto_map(mut self) -> Result<BaserowTable, Box<dyn Error>> {
-        let id = self.id.ok_or("Table ID is missing")?;
-
-        let baserow = self.baserow.clone().ok_or("Baserow instance is missing")?;
-        let fields = baserow.table_fields(id).await?;
-
-        let mut mapper = TableMapper::new();
-        mapper.map_fields(fields.clone());
-        self.mapper = Some(mapper);
-
-        Ok(self)
-    }
-
-    pub fn rows(self) -> RowRequestBuilder {
-        RowRequestBuilder::new()
-            .with_baserow(self.baserow.clone().unwrap())
-            .with_table(self.clone())
-    }
-
-    pub async fn create_one(
-        self,
-        data: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, Box<dyn Error>> {
-        let baserow = self.baserow.expect("Baserow instance is missing");
-
-        let url = format!(
-            "{}/api/database/rows/table/{}/",
-            &baserow.configuration.base_url,
-            self.id.unwrap()
-        );
-
-        let mut req = baserow.client.post(url);
-
-        if baserow.configuration.jwt.is_some() {
-            req = req.header(
-                AUTHORIZATION,
-                format!("JWT {}", &baserow.configuration.jwt.unwrap()),
-            );
-        } else if baserow.configuration.database_token.is_some() {
-            req = req.header(
-                AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.database_token.unwrap()),
-            );
-        }
-
-        let resp = req.json(&data).send().await?;
-
-        match resp.status() {
-            StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
-            _ => Err(Box::new(resp.error_for_status().unwrap_err())),
-        }
-    }
-
-    pub async fn get_one(self, id: u64) -> Result<HashMap<String, Value>, Box<dyn Error>> {
-        let baserow = self.baserow.expect("Baserow instance is missing");
-
-        let url = format!(
-            "{}/api/database/rows/table/{}/{}/",
-            &baserow.configuration.base_url,
-            self.id.unwrap(),
-            id
-        );
-
-        let mut req = baserow.client.get(url);
-
-        if baserow.configuration.jwt.is_some() {
-            req = req.header(
-                AUTHORIZATION,
-                format!("JWT {}", &baserow.configuration.jwt.unwrap()),
-            );
-        } else if baserow.configuration.database_token.is_some() {
-            req = req.header(
-                AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.database_token.unwrap()),
-            );
-        }
-
-        let resp = req.send().await?;
-
-        match resp.status() {
-            StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
-            _ => Err(Box::new(resp.error_for_status().unwrap_err())),
-        }
-    }
-
-    pub async fn update(
-        self,
-        id: u64,
-        data: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, Box<dyn Error>> {
-        let baserow = self.baserow.expect("Baserow instance is missing");
-
-        let url = format!(
-            "{}/api/database/rows/table/{}/{}/",
-            &baserow.configuration.base_url,
-            self.id.unwrap(),
-            id
-        );
-
-        let mut req = baserow.client.patch(url);
-
-        if baserow.configuration.jwt.is_some() {
-            req = req.header(
-                AUTHORIZATION,
-                format!("JWT {}", &baserow.configuration.jwt.unwrap()),
-            );
-        } else if baserow.configuration.database_token.is_some() {
-            req = req.header(
-                AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.database_token.unwrap()),
-            );
-        }
-
-        let resp = req.json(&data).send().await?;
-
-        match resp.status() {
-            StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
-            _ => Err(Box::new(resp.error_for_status().unwrap_err())),
-        }
-    }
-
-    pub async fn delete(self, id: u64) -> Result<(), Box<dyn Error>> {
-        let baserow = self.baserow.expect("Baserow instance is missing");
-
-        let url = format!(
-            "{}/api/database/rows/table/{}/{}/",
-            &baserow.configuration.base_url,
-            self.id.unwrap(),
-            id
-        );
-
-        let mut req = baserow.client.delete(url);
-
-        if baserow.configuration.jwt.is_some() {
-            req = req.header(
-                AUTHORIZATION,
-                format!("JWT {}", &baserow.configuration.jwt.unwrap()),
-            );
-        } else if baserow.configuration.database_token.is_some() {
-            req = req.header(
-                AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.database_token.unwrap()),
-            );
-        }
-
-        let resp = req.send().await?;
-
-        match resp.status() {
-            StatusCode::OK => Ok(()),
-            _ => Err(Box::new(resp.error_for_status().unwrap_err())),
-        }
-    }
 }
+
+pub use api::table_operations::BaserowTableOperations;
 
 #[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct TableField {
@@ -655,7 +500,6 @@ mod tests {
         mock.assert();
     }
 
-    /// Tests the `delete` function of the `BaserowTable` struct to ensure it can delete a record successfully.
     #[tokio::test]
     async fn test_delete_record() {
         let mut server = mockito::Server::new_async().await;
@@ -779,7 +623,10 @@ mod tests {
 
         let logged_in_baserow = result.unwrap();
         assert_eq!(
-            logged_in_baserow.get_configuration().database_token.unwrap(),
+            logged_in_baserow
+                .get_configuration()
+                .database_token
+                .unwrap(),
             "string"
         );
 
