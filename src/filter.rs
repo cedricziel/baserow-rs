@@ -1,79 +1,206 @@
+/// Filter operations available for querying Baserow tables
+///
+/// This enum provides all the possible filter operations that can be used
+/// when querying table rows. The filters are grouped by type (text, date, number, etc.)
+/// and provide rich comparison capabilities.
+///
+/// # Example
+/// ```no_run
+/// use baserow_rs::{ConfigBuilder, Baserow, BaserowTableOperations, filter::Filter, api::client::BaserowClient};
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let config = ConfigBuilder::new()
+///         .base_url("https://api.baserow.io")
+///         .api_key("your-api-key")
+///         .build();
+///
+///     let baserow = Baserow::with_configuration(config);
+///     let table = baserow.table_by_id(1234);
+///
+///     // Query with multiple filters
+///     let results = table.rows()
+///         .filter_by("Status", Filter::Equal, "Active")
+///         .filter_by("Age", Filter::HigherThan, "18")
+///         .filter_by("Name", Filter::Contains, "John")
+///         .get()
+///         .await
+///         .unwrap();
+/// }
+/// ```
 #[derive(Debug)]
 pub enum Filter {
+    /// Exact match comparison
+    /// Field value must exactly match the provided value
+    /// Example: `.filter_by("Status", Filter::Equal, "Active")`
     Equal,
+    /// Inverse of Equal
+    /// Field value must not match the provided value
     NotEqual,
+
+    // Date Filters
+    /// Date field matches exact date
     DateIs,
+    /// Date field does not match exact date
     DateIsNot,
+    /// Date field is before specified date
     DateIsBefore,
+    /// Date field is on or before specified date
     DateIsOnOrBefore,
+    /// Date field is after specified date
     DateIsAfter,
+    /// Date field is on or after specified date
     DateIsOnOrAfter,
+    /// Date field is within specified range
     DateIsWithin,
+    /// Legacy exact date match
     DateEqual,
+    /// Legacy date not equal
     DateNotEqual,
+    /// Date field is today
     DateEqualsToday,
+    /// Date field is before today
     DateBeforeToday,
+    /// Date field is after today
     DateAfterToday,
+    /// Date is within specified number of days
     DateWithinDays,
+    /// Date is within specified number of weeks
     DateWithinWeeks,
+    /// Date is within specified number of months
     DateWithinMonths,
+    /// Date is exactly specified number of days ago
     DateEqualsDaysAgo,
+    /// Date is exactly specified number of months ago
     DateEqualsMonthsAgo,
+    /// Date is exactly specified number of years ago
     DateEqualsYearsAgo,
+    /// Date is in specified week
     DateEqualsWeek,
+    /// Date is in specified month
     DateEqualsMonth,
+    /// Date is in specified year
     DateEqualsYear,
+    /// Date matches specific day of month
     DateEqualsDayOfMonth,
+    /// Legacy before date
     DateBefore,
+    /// Legacy before or equal date
     DateBeforeOrEqual,
+    /// Legacy after date
     DateAfter,
+    /// Legacy after or equal date
     DateAfterOrEqual,
+    /// Date is after specified number of days ago
     DateAfterDaysAgo,
+
+    // Value Presence Filters
+    /// Field has empty value
     HasEmptyValue,
+    /// Field has non-empty value
     HasNotEmptyValue,
+    /// Field has specific value
     HasValueEqual,
+    /// Field does not have specific value
     HasNotValueEqual,
+    /// Field value contains substring
     HasValueContains,
+    /// Field value does not contain substring
     HasNotValueContains,
+    /// Field value contains specific word
     HasValueContainsWord,
+    /// Field value does not contain specific word
     HasNotValueContainsWord,
+    /// Field value length is less than specified
     HasValueLengthIsLowerThan,
+    /// All values in field equal specified value
     HasAllValuesEqual,
+    /// Any select option matches value
     HasAnySelectOptionEqual,
+    /// No select option matches value
     HasNoneSelectOptionEqual,
+
+    // Text Filters
+    /// Text contains substring
+    /// Example: `.filter_by("Name", Filter::Contains, "John")`
     Contains,
+    /// Text does not contain substring
     ContainsNot,
+    /// Text contains whole word
     ContainsWord,
+    /// Text does not contain whole word
     DoesntContainWord,
+
+    // File Filters
+    /// Filename contains substring
     FilenameContains,
+    /// File is of specified type
     HasFileType,
+    /// Number of files is less than specified
     FilesLowerThan,
+    /// Text length is less than specified
     LengthIsLowerThan,
+
+    // Numeric Filters
+    /// Number is greater than value
+    /// Example: `.filter_by("Age", Filter::HigherThan, "18")`
     HigherThan,
+    /// Number is greater than or equal to value
     HigherThanOrEqual,
+    /// Number is less than value
     LowerThan,
+    /// Number is less than or equal to value
     LowerThanOrEqual,
+    /// Number is even and whole
     IsEvenAndWhole,
+
+    // Select Filters
+    /// Single select matches value
     SingleSelectEqual,
+    /// Single select does not match value
     SingleSelectNotEqual,
+    /// Single select matches any of values
     SingleSelectIsAnyOf,
+    /// Single select matches none of values
     SingleSelectIsNoneOf,
+    /// Boolean field matches value
     Boolean,
+
+    // Link Row Filters
+    /// Linked row exists
     LinkRowHas,
+    /// Linked row does not exist
     LinkRowHasNot,
+    /// Linked row contains value
     LinkRowContains,
+    /// Linked row does not contain value
     LinkRowNotContains,
+
+    // Multiple Select Filters
+    /// Multiple select includes value
     MultipleSelectHas,
+    /// Multiple select does not include value
     MultipleSelectHasNot,
+    /// Multiple collaborators includes user
     MultipleCollaboratorsHas,
+    /// Multiple collaborators does not include user
     MultipleCollaboratorsHasNot,
+
+    // Null Filters
+    /// Field is empty/null
     Empty,
+    /// Field is not empty/null
     NotEmpty,
+
+    // User Filters
+    /// Field matches specific user
     UserIs,
+    /// Field does not match specific user
     UserIsNot,
 }
 
 impl Filter {
+    /// Converts the filter to its string representation for API requests
     pub fn as_str(&self) -> &'static str {
         match self {
             Filter::Equal => "equal",
@@ -151,8 +278,15 @@ impl Filter {
     }
 }
 
-pub(crate) struct FilterTriple {
+/// Internal structure for representing a filter condition
+///
+/// Combines a field name, filter operation, and value into a single filter condition
+/// that can be applied to a table query.
+pub struct FilterTriple {
+    /// The name of the field to filter on
     pub field: String,
+    /// The filter operation to apply
     pub filter: Filter,
+    /// The value to compare against
     pub value: String,
 }

@@ -9,14 +9,51 @@ use crate::{
     Baserow, BaserowTable, OrderDirection,
 };
 
+/// Response structure for table row queries
+///
+/// Contains the query results along with pagination information.
 #[derive(Deserialize, Serialize, Debug)]
 pub struct RowsResponse {
+    /// Total count of records that match the query criteria, not just the current page
     pub count: i32,
+    /// URL for the next page of results, if available
     pub next: Option<String>,
+    /// URL for the previous page of results, if available
     pub previous: Option<String>,
+    /// The actual rows returned by the query
     pub results: Vec<HashMap<String, Value>>,
 }
 
+/// Builder for constructing table row queries
+///
+/// Provides a fluent interface for building queries with filtering, sorting,
+/// and other options.
+///
+/// # Example
+/// ```no_run
+/// use baserow_rs::{ConfigBuilder, Baserow, BaserowTableOperations, OrderDirection, filter::Filter, api::client::BaserowClient};
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let config = ConfigBuilder::new()
+///         .base_url("https://api.baserow.io")
+///         .api_key("your-api-key")
+///         .build();
+///
+///     let baserow = Baserow::with_configuration(config);
+///     let table = baserow.table_by_id(1234);
+///
+///     // Build a query with filters and sorting
+///     let results = table.rows()
+///         .filter_by("Status", Filter::Equal, "Active")
+///         .order_by("Created", OrderDirection::Desc)
+///         .get()
+///         .await
+///         .unwrap();
+///
+///     println!("Found {} matching rows", results.count);
+/// }
+/// ```
 pub struct RowRequestBuilder {
     baserow: Option<Baserow>,
     table: Option<BaserowTable>,
@@ -48,6 +85,19 @@ impl RowRequestBuilder {
         }
     }
 
+    /// Add sorting criteria to the query
+    ///
+    /// # Arguments
+    /// * `field` - The field name to sort by
+    /// * `direction` - The sort direction (Asc or Desc)
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use baserow_rs::{BaserowTable, OrderDirection, BaserowTableOperations};
+    /// # let table = BaserowTable::default();
+    /// table.rows()
+    ///     .order_by("Created", OrderDirection::Desc);
+    /// ```
     pub fn order_by(self, field: &str, direction: OrderDirection) -> Self {
         match self.order {
             Some(mut order) => {
@@ -68,6 +118,20 @@ impl RowRequestBuilder {
         }
     }
 
+    /// Add a filter condition to the query
+    ///
+    /// # Arguments
+    /// * `field` - The field name to filter on
+    /// * `filter_op` - The filter operation (Equal, Contains, etc.)
+    /// * `value` - The value to filter against
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use baserow_rs::{BaserowTable, filter::Filter, BaserowTableOperations};
+    /// # let table = BaserowTable::default();
+    /// table.rows()
+    ///     .filter_by("Status", Filter::Equal, "Active");
+    /// ```
     pub fn filter_by(self, field: &str, filter_op: Filter, value: &str) -> Self {
         match self.filter {
             Some(mut filter) => {
@@ -96,6 +160,16 @@ impl RowRequestBuilder {
         }
     }
 
+    /// Execute the query and return the results
+    ///
+    /// Sends the constructed query to Baserow and returns the matching rows
+    /// along with pagination information.
+    ///
+    /// # Returns
+    /// A RowsResponse containing the matching rows and metadata
+    ///
+    /// # Errors
+    /// Returns an error if the request fails or the response cannot be parsed
     pub async fn get(self) -> Result<RowsResponse, Box<dyn Error>> {
         let baserow = self.baserow.expect("Baserow instance is missing");
 
@@ -148,9 +222,7 @@ impl RowRequestBuilder {
 
         match resp.status() {
             StatusCode::OK => {
-                // convert json to vector of hashmaps
                 let rows: RowsResponse = resp.json().await?;
-
                 Ok(rows)
             }
             _ => Err(Box::new(resp.error_for_status().unwrap_err())),

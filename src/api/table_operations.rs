@@ -8,24 +8,97 @@ use serde_json::Value;
 use std::{collections::HashMap, error::Error};
 
 /// Trait defining the public operations available on a Baserow table
+///
+/// This trait provides the core CRUD operations for working with Baserow tables.
+/// All operations are async and return Results to handle potential errors.
+///
+/// # Example
+/// ```no_run
+/// use baserow_rs::{ConfigBuilder, Baserow, BaserowTableOperations, api::client::BaserowClient};
+/// use std::collections::HashMap;
+/// use serde_json::Value;
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let config = ConfigBuilder::new()
+///         .base_url("https://api.baserow.io")
+///         .api_key("your-api-key")
+///         .build();
+///
+///     let baserow = Baserow::with_configuration(config);
+///     let table = baserow.table_by_id(1234);
+///
+///     // Create a new record
+///     let mut data = HashMap::new();
+///     data.insert("Name".to_string(), Value::String("Test".to_string()));
+///     let result = table.create_one(data).await.unwrap();
+/// }
+/// ```
 #[async_trait]
 pub trait BaserowTableOperations {
-    /// Automatically maps the table fields
+    /// Automatically maps the table fields to their corresponding types
+    ///
+    /// This method fetches the table schema and sets up field mappings for type conversion.
+    /// Call this before performing operations if you need type-safe field access.
     async fn auto_map(self) -> Result<BaserowTable, Box<dyn Error>>;
 
-    /// Returns a builder for querying rows from the table
+    /// Returns a builder for constructing complex table queries
+    ///
+    /// The builder allows you to add filters, sorting, and pagination to your queries.
+    /// Use this when you need more control over how you fetch rows from the table.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use baserow_rs::{ConfigBuilder, Baserow, BaserowTableOperations, OrderDirection, api::client::BaserowClient};
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let config = ConfigBuilder::new()
+    ///         .base_url("https://api.baserow.io")
+    ///         .api_key("your-api-key")
+    ///         .build();
+    ///
+    ///     let baserow = Baserow::with_configuration(config);
+    ///     let table = baserow.table_by_id(1234);
+    ///
+    ///     let results = table.rows()
+    ///         .order_by("Created", OrderDirection::Desc)
+    ///         .get()
+    ///         .await
+    ///         .unwrap();
+    /// }
+    /// ```
     fn rows(self) -> RowRequestBuilder;
 
     /// Creates a single record in the table
+    ///
+    /// # Arguments
+    /// * `data` - A map of field names to values representing the record to create
+    ///
+    /// # Returns
+    /// The created record including any auto-generated fields (like ID)
     async fn create_one(
         self,
         data: HashMap<String, Value>,
     ) -> Result<HashMap<String, Value>, Box<dyn Error>>;
 
     /// Retrieves a single record from the table by ID
+    ///
+    /// # Arguments
+    /// * `id` - The unique identifier of the record to retrieve
+    ///
+    /// # Returns
+    /// The requested record if found
     async fn get_one(self, id: u64) -> Result<HashMap<String, Value>, Box<dyn Error>>;
 
     /// Updates a single record in the table
+    ///
+    /// # Arguments
+    /// * `id` - The unique identifier of the record to update
+    /// * `data` - A map of field names to new values
+    ///
+    /// # Returns
+    /// The updated record
     async fn update(
         self,
         id: u64,
@@ -33,6 +106,9 @@ pub trait BaserowTableOperations {
     ) -> Result<HashMap<String, Value>, Box<dyn Error>>;
 
     /// Deletes a single record from the table
+    ///
+    /// # Arguments
+    /// * `id` - The unique identifier of the record to delete
     async fn delete(self, id: u64) -> Result<(), Box<dyn Error>>;
 }
 

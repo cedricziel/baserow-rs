@@ -1,3 +1,37 @@
+//! A Rust client for the Baserow API
+//!
+//! This crate provides a strongly-typed client for interacting with Baserow's REST API.
+//! It supports authentication, table operations, file uploads, and more.
+//!
+//! # Example
+//! ```no_run
+//! use baserow_rs::{ConfigBuilder, Baserow, BaserowTableOperations, api::client::BaserowClient};
+//! use std::collections::HashMap;
+//! use serde_json::Value;
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     // Create a configuration
+//!     let config = ConfigBuilder::new()
+//!         .base_url("https://api.baserow.io")
+//!         .api_key("your-api-key")
+//!         .build();
+//!
+//!     // Initialize the client
+//!     let baserow = Baserow::with_configuration(config);
+//!
+//!     // Get a table reference
+//!     let table = baserow.table_by_id(1234);
+//!
+//!     // Create a record
+//!     let mut data = HashMap::new();
+//!     data.insert("Name".to_string(), Value::String("Test".to_string()));
+//!
+//!     let result = table.create_one(data).await.unwrap();
+//!     println!("Created record: {:?}", result);
+//! }
+//! ```
+
 use std::{collections::HashMap, error::Error, fs::File};
 
 use api::{
@@ -24,6 +58,10 @@ pub mod error;
 pub mod filter;
 pub mod mapper;
 
+/// Configuration for the Baserow client
+///
+/// This struct holds all the configuration options needed to connect to a Baserow instance,
+/// including authentication credentials and API endpoints.
 #[derive(Clone)]
 pub struct Configuration {
     base_url: String,
@@ -39,6 +77,19 @@ pub struct Configuration {
     user: Option<User>,
 }
 
+/// Builder for creating Configuration instances
+///
+/// Provides a fluent interface for constructing Configuration objects with the required parameters.
+///
+/// # Example
+/// ```
+/// use baserow_rs::ConfigBuilder;
+///
+/// let config = ConfigBuilder::new()
+///     .base_url("https://api.baserow.io")
+///     .api_key("your-api-key")
+///     .build();
+/// ```
 #[derive(Default)]
 pub struct ConfigBuilder {
     base_url: Option<String>,
@@ -94,6 +145,10 @@ impl ConfigBuilder {
     }
 }
 
+/// Main client for interacting with the Baserow API
+///
+/// This struct implements the BaserowClient trait and provides methods for all API operations.
+/// It handles authentication, request signing, and maintains the client state.
 #[derive(Clone)]
 pub struct Baserow {
     configuration: Configuration,
@@ -320,6 +375,10 @@ impl BaserowClient for Baserow {
     }
 }
 
+/// Represents a table in Baserow
+///
+/// This struct provides methods for interacting with a specific table, including
+/// creating, reading, updating and deleting records.
 #[derive(Deserialize, Serialize, Default, Clone)]
 pub struct BaserowTable {
     #[serde(skip)]
@@ -348,6 +407,9 @@ impl BaserowTable {
 
 pub use api::table_operations::BaserowTableOperations;
 
+/// Represents a field in a Baserow table
+///
+/// Contains metadata about a table column including its type, name, and other attributes.
 #[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct TableField {
     pub id: u64,
@@ -360,6 +422,9 @@ pub struct TableField {
     pub description: Option<String>,
 }
 
+/// Specifies the sort direction for table queries
+///
+/// Used when ordering table results to determine ascending or descending order.
 pub enum OrderDirection {
     Asc,
     Desc,
