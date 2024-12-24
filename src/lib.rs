@@ -2,6 +2,7 @@ use std::{collections::HashMap, error::Error, fs::File};
 
 use api::{
     authentication::{LoginRequest, TokenResponse, User},
+    client::BaserowClient,
     table::RowRequestBuilder,
 };
 use error::{FileUploadError, TokenAuthError};
@@ -15,7 +16,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio_util::codec::{BytesCodec, FramedRead};
 
-mod api;
+pub mod api;
+
+#[macro_use]
+extern crate async_trait;
 
 pub mod error;
 pub mod filter;
@@ -42,7 +46,6 @@ pub struct ConfigBuilder {
     api_key: Option<String>,
     email: Option<String>,
     password: Option<String>,
-    jwt: Option<String>,
 }
 
 impl ConfigBuilder {
@@ -52,7 +55,6 @@ impl ConfigBuilder {
             api_key: None,
             email: None,
             password: None,
-            jwt: None,
         }
     }
 
@@ -146,10 +148,19 @@ impl Baserow {
             client: self.client.clone(),
         }
     }
+}
 
-    /// Authenticates an existing user based on their email and their password.
-    /// If successful, an access token and a refresh token will be returned.
-    pub async fn token_auth(&self) -> Result<Baserow, TokenAuthError> {
+#[async_trait]
+impl BaserowClient for Baserow {
+    fn get_configuration(&self) -> Configuration {
+        self.configuration.clone()
+    }
+
+    fn get_client(&self) -> Client {
+        self.client.clone()
+    }
+
+    async fn token_auth(&self) -> Result<Box<dyn BaserowClient>, TokenAuthError> {
         let url = format!("{}/api/user/token-auth/", &self.configuration.base_url);
 
         let email = self
@@ -176,27 +187,19 @@ impl Baserow {
         match resp.status() {
             StatusCode::OK => {
                 let token_response: TokenResponse = resp.json().await?;
-                Ok(self
+                let client = self
                     .clone()
                     .with_database_token(token_response.token)
                     .with_access_token(token_response.access_token)
                     .with_refresh_token(token_response.refresh_token)
-                    .with_user(token_response.user))
+                    .with_user(token_response.user);
+                Ok(Box::new(client) as Box<dyn BaserowClient>)
             }
             _ => Err(TokenAuthError::AuthenticationFailed(resp.text().await?)),
         }
     }
 
-    /// Retrieves all fields for a given table.
-    ///
-    /// This function sends a GET request to the Baserow API's
-    /// `/api/database/fields/table/{table_id}/` endpoint and returns a vector
-    /// of `TableField`s.
-    ///
-    /// If the request is successful (200), the JSON response is parsed into a
-    /// vector of `TableField`s and returned. Otherwise, the error message is
-    /// returned as a `Box<dyn Error>`.
-    pub async fn table_fields(&self, table_id: u64) -> Result<Vec<TableField>, Box<dyn Error>> {
+    async fn table_fields(&self, table_id: u64) -> Result<Vec<TableField>, Box<dyn Error>> {
         let url = format!(
             "{}/api/database/fields/table/{}/",
             &self.configuration.base_url, table_id
@@ -229,14 +232,13 @@ impl Baserow {
         }
     }
 
-    // Returns a table by its ID.
-    pub fn table_by_id(&self, id: u64) -> BaserowTable {
+    fn table_by_id(&self, id: u64) -> BaserowTable {
         BaserowTable::default()
             .with_id(id)
             .with_baserow(self.clone())
     }
 
-    pub async fn upload_file(
+    async fn upload_file(
         &self,
         file: File,
         filename: String,
@@ -280,7 +282,7 @@ impl Baserow {
         }
     }
 
-    pub async fn upload_file_via_url(&self, url: &str) -> Result<api::file::File, FileUploadError> {
+    async fn upload_file_via_url(&self, url: &str) -> Result<api::file::File, FileUploadError> {
         // Validate URL format and scheme
         let file_url = url
             .parse::<reqwest::Url>()
@@ -777,7 +779,7 @@ mod tests {
 
         let logged_in_baserow = result.unwrap();
         assert_eq!(
-            logged_in_baserow.configuration.database_token.unwrap(),
+            logged_in_baserow.get_configuration().database_token.unwrap(),
             "string"
         );
 

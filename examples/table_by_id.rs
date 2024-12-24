@@ -1,6 +1,6 @@
 use std::env;
 
-use baserow_rs::{filter::Filter, Baserow, ConfigBuilder, OrderDirection};
+use baserow_rs::{api::client::BaserowClient, filter::Filter, Baserow, ConfigBuilder, OrderDirection};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
