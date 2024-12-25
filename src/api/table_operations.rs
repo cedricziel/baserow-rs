@@ -86,27 +86,54 @@ pub trait BaserowTableOperations {
 
     /// Retrieves a single record from the table by ID
     ///
-    /// # Arguments
-    /// * `id` - The unique identifier of the record to retrieve
-    ///
-    /// # Returns
-    /// The requested record if found
-    /// Retrieves a single record from the table by ID as a HashMap
-    async fn get_one(self, id: u64) -> Result<HashMap<String, Value>, Box<dyn Error>>;
-
-    /// Retrieves a single record from the table by ID and deserializes it into the specified type
-    ///
     /// # Type Parameters
-    /// * `T` - The type to deserialize into. Must implement DeserializeOwned.
+    /// * `T` - The type to deserialize into. Defaults to HashMap<String, Value>.
+    ///         When using a custom type, the table must be mapped using `auto_map()` first.
     ///
     /// # Arguments
     /// * `id` - The unique identifier of the record to retrieve
     ///
     /// # Returns
-    /// The requested record deserialized into type T if found
-    async fn get_one_typed<T>(self, id: u64) -> Result<T, Box<dyn Error>>
+    /// The requested record if found, either as a HashMap or deserialized into type T
+    ///
+    /// # Example
+    /// ```no_run
+    /// use baserow_rs::{ConfigBuilder, Baserow, BaserowTableOperations, api::client::BaserowClient};
+    /// use serde::Deserialize;
+    /// use std::collections::HashMap;
+    /// use serde_json::Value;
+    ///
+    /// #[derive(Deserialize)]
+    /// struct User {
+    ///     name: String,
+    ///     email: String,
+    /// }
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let config = ConfigBuilder::new()
+    ///         .base_url("https://api.baserow.io")
+    ///         .api_key("your-api-key")
+    ///         .build();
+    ///
+    ///     let baserow = Baserow::with_configuration(config);
+    ///     let table = baserow.table_by_id(1234);
+    ///
+    ///     // Get as HashMap (default)
+    ///     let row: HashMap<String, Value> = table.clone().get_one(1).await.unwrap();
+    ///
+    ///     // Get as typed struct
+    ///     let user: User = table.auto_map()
+    ///         .await
+    ///         .unwrap()
+    ///         .get_one(1)
+    ///         .await
+    ///         .unwrap();
+    /// }
+    /// ```
+    async fn get_one<T>(self, id: u64) -> Result<T, Box<dyn Error>>
     where
-        T: DeserializeOwned;
+        T: DeserializeOwned + 'static;
 
     /// Updates a single record in the table
     ///
@@ -131,15 +158,6 @@ pub trait BaserowTableOperations {
 
 #[async_trait]
 impl BaserowTableOperations for BaserowTable {
-    async fn get_one_typed<T>(mut self, id: u64) -> Result<T, Box<dyn Error>>
-    where
-        T: DeserializeOwned,
-    {
-        let mapper = self.mapper.clone().ok_or("Table mapper is missing")?;
-        let row = self.get_one(id).await?;
-        Ok(mapper.deserialize_row(row)?)
-    }
-
     async fn auto_map(mut self) -> Result<BaserowTable, Box<dyn Error>> {
         let id = self.id.ok_or("Table ID is missing")?;
 
@@ -193,7 +211,10 @@ impl BaserowTableOperations for BaserowTable {
         }
     }
 
-    async fn get_one(self, id: u64) -> Result<HashMap<String, Value>, Box<dyn Error>> {
+    async fn get_one<T>(mut self, id: u64) -> Result<T, Box<dyn Error>>
+    where
+        T: DeserializeOwned + 'static,
+    {
         let baserow = self.baserow.expect("Baserow instance is missing");
 
         let url = format!(
@@ -220,7 +241,18 @@ impl BaserowTableOperations for BaserowTable {
         let resp = req.send().await?;
 
         match resp.status() {
-            StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
+            StatusCode::OK => {
+                let row: HashMap<String, Value> = resp.json().await?;
+
+                // For HashMap<String, Value>, use serde to convert
+                if std::any::TypeId::of::<T>() == std::any::TypeId::of::<HashMap<String, Value>>() {
+                    Ok(serde_json::from_value(serde_json::to_value(row)?)?)
+                } else {
+                    // For other types, use the mapper if available
+                    let mapper = self.mapper.clone().ok_or("Table mapper is missing. Call auto_map() first when using typed responses.")?;
+                    Ok(mapper.deserialize_row(row)?)
+                }
+            }
             _ => Err(Box::new(resp.error_for_status().unwrap_err())),
         }
     }

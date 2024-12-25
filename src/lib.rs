@@ -515,7 +515,7 @@ mod tests {
         let baserow = Baserow::with_configuration(configuration);
         let table = baserow.table_by_id(1234);
 
-        let result = table.get_one(5678).await;
+        let result: Result<HashMap<String, Value>, Box<dyn Error>> = table.get_one(5678).await;
         assert!(result.is_ok());
 
         let record = result.unwrap();
