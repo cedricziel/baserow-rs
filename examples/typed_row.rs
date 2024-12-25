@@ -22,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let table = baserow.table_by_id(1234).auto_map().await?;
 
     // Get a row and deserialize it into our User struct
-    match table.get_one_typed::<User>(1).await {
+    match table.get_one::<User>(1).await {
         Ok(user) => println!("Found user: {:?}", user),
         Err(e) => eprintln!("Error: {}", e),
     }
