@@ -1,6 +1,7 @@
 use crate::{
     api::{client::BaserowClient, table::RowRequestBuilder},
     BaserowTable,
+    mapper::{FieldMapper, TableMapper},
 };
 use async_trait::async_trait;
 use reqwest::{header::AUTHORIZATION, StatusCode};
@@ -120,7 +121,7 @@ impl BaserowTableOperations for BaserowTable {
         let baserow = self.baserow.clone().ok_or("Baserow instance is missing")?;
         let fields = baserow.table_fields(id).await?;
 
-        let mut mapper = crate::mapper::TableMapper::new();
+        let mut mapper = TableMapper::new();
         mapper.map_fields(fields.clone());
         self.mapper = Some(mapper);
 
