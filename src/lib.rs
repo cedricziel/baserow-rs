@@ -32,7 +32,7 @@
 //! }
 //! ```
 
-use std::{collections::HashMap, error::Error, fs::File};
+use std::{error::Error, fs::File};
 
 use api::{
     authentication::{LoginRequest, TokenResponse, User},
@@ -46,7 +46,6 @@ use reqwest::{
     Body, Client, StatusCode,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use tokio_util::codec::{BytesCodec, FramedRead};
 
 pub mod api;
@@ -432,7 +431,9 @@ pub enum OrderDirection {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use super::*;
+    use serde_json::Value;
 
     #[test]
     fn test() {

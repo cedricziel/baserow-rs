@@ -27,7 +27,6 @@ pub struct RowsResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{BaserowTableOperations, ConfigBuilder};
 
     #[test]
     fn test_pagination_parameters() {
