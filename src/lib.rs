@@ -431,9 +431,9 @@ pub enum OrderDirection {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
     use super::*;
     use serde_json::Value;
+    use std::collections::HashMap;
 
     #[test]
     fn test() {

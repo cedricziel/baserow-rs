@@ -1,10 +1,11 @@
 use crate::{
     api::{client::BaserowClient, table::RowRequestBuilder},
-    BaserowTable,
     mapper::{FieldMapper, TableMapper},
+    BaserowTable,
 };
 use async_trait::async_trait;
 use reqwest::{header::AUTHORIZATION, StatusCode};
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::{collections::HashMap, error::Error};
 
@@ -90,7 +91,22 @@ pub trait BaserowTableOperations {
     ///
     /// # Returns
     /// The requested record if found
+    /// Retrieves a single record from the table by ID as a HashMap
     async fn get_one(self, id: u64) -> Result<HashMap<String, Value>, Box<dyn Error>>;
+
+    /// Retrieves a single record from the table by ID and deserializes it into the specified type
+    ///
+    /// # Type Parameters
+    /// * `T` - The type to deserialize into. Must implement DeserializeOwned.
+    ///
+    /// # Arguments
+    /// * `id` - The unique identifier of the record to retrieve
+    ///
+    /// # Returns
+    /// The requested record deserialized into type T if found
+    async fn get_one_typed<T>(self, id: u64) -> Result<T, Box<dyn Error>>
+    where
+        T: DeserializeOwned;
 
     /// Updates a single record in the table
     ///
@@ -115,6 +131,15 @@ pub trait BaserowTableOperations {
 
 #[async_trait]
 impl BaserowTableOperations for BaserowTable {
+    async fn get_one_typed<T>(mut self, id: u64) -> Result<T, Box<dyn Error>>
+    where
+        T: DeserializeOwned,
+    {
+        let mapper = self.mapper.clone().ok_or("Table mapper is missing")?;
+        let row = self.get_one(id).await?;
+        Ok(mapper.deserialize_row(row)?)
+    }
+
     async fn auto_map(mut self) -> Result<BaserowTable, Box<dyn Error>> {
         let id = self.id.ok_or("Table ID is missing")?;
 
