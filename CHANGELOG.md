@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.8.0](https://github.com/cedricziel/baserow-rs/compare/v0.7.0...v0.8.0) (2024-12-25)
+
+
+### Features
+
+* allow retrieving typed-rows ([#29](https://github.com/cedricziel/baserow-rs/issues/29)) ([660444f](https://github.com/cedricziel/baserow-rs/commit/660444ff178c1c5b5f2517d84f7323a9ae926132))
+* allow selection of views ([#26](https://github.com/cedricziel/baserow-rs/issues/26)) ([1e68076](https://github.com/cedricziel/baserow-rs/commit/1e680769bc6fd8d35395975f345efabc64067997))
+
+
+### Bug Fixes
+
+* extract field mapper ([#28](https://github.com/cedricziel/baserow-rs/issues/28)) ([8c10c34](https://github.com/cedricziel/baserow-rs/commit/8c10c3427da2b6c51f2b0516c0772fcb7ebe61fb))
+
 ## [0.7.0](https://github.com/cedricziel/baserow-rs/compare/v0.6.0...v0.7.0) (2024-12-24)
 
 
