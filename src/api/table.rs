@@ -43,10 +43,11 @@ pub struct RowsResponse {
 ///     let baserow = Baserow::with_configuration(config);
 ///     let table = baserow.table_by_id(1234);
 ///
-///     // Build a query with filters and sorting
+///     // Build a query with filters, sorting, and view selection
 ///     let results = table.rows()
 ///         .filter_by("Status", Filter::Equal, "Active")
 ///         .order_by("Created", OrderDirection::Desc)
+///         .view_id(5678)  // Query from a specific view
 ///         .get()
 ///         .await
 ///         .unwrap();
@@ -59,6 +60,7 @@ pub struct RowRequestBuilder {
     table: Option<BaserowTable>,
     order: Option<HashMap<String, OrderDirection>>,
     filter: Option<Vec<FilterTriple>>,
+    view_id: Option<i64>,
 }
 
 impl RowRequestBuilder {
@@ -68,6 +70,7 @@ impl RowRequestBuilder {
             table: None,
             order: None,
             filter: None,
+            view_id: None,
         }
     }
 
@@ -160,6 +163,26 @@ impl RowRequestBuilder {
         }
     }
 
+    /// Set the view ID to query rows from a specific view
+    ///
+    /// # Arguments
+    /// * `view_id` - The ID of the view to query
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use baserow_rs::{BaserowTable, BaserowTableOperations};
+    /// # let table = BaserowTable::default();
+    /// table.rows()
+    ///     .view_id(12345)
+    ///     .get();
+    /// ```
+    pub fn view_id(self, view_id: i64) -> Self {
+        Self {
+            view_id: Some(view_id),
+            ..self
+        }
+    }
+
     /// Execute the query and return the results
     ///
     /// Sends the constructed query to Baserow and returns the matching rows
@@ -216,6 +239,10 @@ impl RowRequestBuilder {
                     triple.value,
                 )]);
             }
+        }
+
+        if let Some(view_id) = self.view_id {
+            req = req.query(&[("view_id", view_id.to_string())]);
         }
 
         let resp = req.send().await?;
