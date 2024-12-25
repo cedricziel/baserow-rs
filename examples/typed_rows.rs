@@ -27,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get rows and deserialize them into User structs with filtering and pagination
     let response = table
         .clone()
-        .rows()
+        .query()
         .page_size(10) // Get 10 rows per page
         .filter_by("age", Filter::HigherThan, "18") // Only users over 18
         .order_by("name", OrderDirection::Asc) // Sort by name
@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if response.next.is_some() {
         let next_page = table
             .clone()
-            .rows()
+            .query()
             .page_size(10)
             .offset(10) // Skip first 10 results
             .filter_by("age", Filter::HigherThan, "18")

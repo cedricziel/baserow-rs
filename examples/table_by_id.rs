@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // retrieve a table by id
     let rows = baserow
         .table_by_id(176)
-        .rows()
+        .query()
         .filter_by("field_1529", Filter::Equal, "testaaaaaaaaaa")
         .order_by("field_1529", OrderDirection::Asc)
         .get::<HashMap<String, Value>>()
