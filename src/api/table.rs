@@ -49,6 +49,23 @@ mod tests {
         assert_eq!(builder.page_size, Some(25));
         assert_eq!(builder.offset, Some(50));
     }
+
+    #[test]
+    fn test_view_parameter() {
+        let table = BaserowTable {
+            id: Some(1234),
+            database_id: Some(1),
+            name: Some("Test".to_string()),
+            baserow: None,
+            mapper: None,
+            order: None,
+        };
+
+        let builder = RowRequestBuilder::new().with_table(table).view(456);
+
+        // Verify view ID is set
+        assert_eq!(builder.view_id, Some(456));
+    }
 }
 
 /// Builder for constructing table row queries
@@ -58,7 +75,7 @@ mod tests {
 ///
 /// # Examples
 ///
-/// Basic query with filters and sorting:
+/// Basic query with filters, sorting, and view selection:
 /// ```no_run
 /// use baserow_rs::{ConfigBuilder, Baserow, BaserowTableOperations, OrderDirection, filter::Filter};
 /// use baserow_rs::api::client::BaserowClient;
@@ -73,8 +90,9 @@ mod tests {
 ///     let baserow = Baserow::with_configuration(config);
 ///     let table = baserow.table_by_id(1234);
 ///
-///     // Build a query with filters and sorting
+///     // Build a query with filters, sorting, and view selection
 ///     let results = table.rows()
+///         .view(456)  // Query from a specific view
 ///         .filter_by("Status", Filter::Equal, "Active")
 ///         .order_by("Created", OrderDirection::Desc)
 ///         .get()
@@ -121,6 +139,7 @@ pub struct RowRequestBuilder {
     filter: Option<Vec<FilterTriple>>,
     page_size: Option<i32>,
     offset: Option<i32>,
+    view_id: Option<i32>,
 }
 
 impl RowRequestBuilder {
@@ -132,6 +151,26 @@ impl RowRequestBuilder {
             filter: None,
             page_size: None,
             offset: None,
+            view_id: None,
+        }
+    }
+
+    /// Set the view ID to query rows from a specific view
+    ///
+    /// # Arguments
+    /// * `id` - The ID of the view to query
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use baserow_rs::{BaserowTable, BaserowTableOperations};
+    /// # let table = BaserowTable::default();
+    /// table.rows()
+    ///     .view(123);
+    /// ```
+    pub fn view(self, id: i32) -> Self {
+        Self {
+            view_id: Some(id),
+            ..self
         }
     }
 
@@ -275,11 +314,18 @@ impl RowRequestBuilder {
     pub async fn get(self) -> Result<RowsResponse, Box<dyn Error>> {
         let baserow = self.baserow.expect("Baserow instance is missing");
 
-        let url = format!(
-            "{}/api/database/rows/table/{}/",
-            &baserow.configuration.base_url,
-            self.table.as_ref().unwrap().id.unwrap()
-        );
+        let url = if let Some(view_id) = self.view_id {
+            format!(
+                "{}/api/database/views/{}/",
+                &baserow.configuration.base_url, view_id
+            )
+        } else {
+            format!(
+                "{}/api/database/rows/table/{}/",
+                &baserow.configuration.base_url,
+                self.table.as_ref().unwrap().id.unwrap()
+            )
+        };
 
         let mut req = Client::new().get(url);
 
