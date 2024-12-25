@@ -76,6 +76,46 @@ let updated_row = baserow.table_by_id(176).update(row_id, record).await?;
 let fields = baserow.table_fields(table_id).await?;
 ```
 
+### Map Rows to Structs
+
+You can map table rows directly to your own structs using serde's Deserialize:
+
+```rust
+use serde::Deserialize;
+use baserow_rs::{OrderDirection, filter::Filter};
+
+#[derive(Debug, Deserialize)]
+struct User {
+    id: u64,
+    name: String,
+    email: String,
+    age: Option<i32>,
+}
+
+// First auto_map the table to ensure field mappings are available
+let table = baserow.table_by_id(1234).auto_map().await?;
+
+// Get a single row and deserialize it into your struct
+let user: User = table.clone().get_one_typed::<User>(1).await?;
+println!("Found user: {:?}", user);
+
+// Query multiple rows with filtering, sorting, and pagination
+let response = table.clone()
+    .rows()
+    .page_size(10)  // Get 10 rows per page
+    .filter_by("age", Filter::HigherThan, "18")  // Only users over 18
+    .order_by("name", OrderDirection::Asc)  // Sort by name
+    .get_typed::<User>()
+    .await?;
+
+println!("Found {} total users", response.count);
+for user in response.results {
+    println!("User: {:?}", user);
+}
+```
+
+The field names in your struct should match the column names in your Baserow table. Use `Option<T>` for nullable fields. Remember to clone the table when using it multiple times, as operations consume the table instance.
+
 ## File Operations
 
 ### Upload a File

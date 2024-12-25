@@ -1,3 +1,5 @@
+use serde::de::DeserializeOwned;
+use serde_json::Value;
 use std::collections::HashMap;
 
 use crate::TableField;
@@ -54,6 +56,23 @@ impl TableMapper {
     /// Creates a new empty TableMapper
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Deserializes a row into a user-defined type
+    ///
+    /// # Type Parameters
+    /// * `T` - The type to deserialize into. Must implement DeserializeOwned.
+    ///
+    /// # Arguments
+    /// * `row` - The row data as a HashMap
+    ///
+    /// # Returns
+    /// * `Result<T, serde_json::Error>` - The deserialized struct or an error
+    pub fn deserialize_row<T>(&self, row: HashMap<String, Value>) -> Result<T, serde_json::Error>
+    where
+        T: DeserializeOwned,
+    {
+        serde_json::from_value(serde_json::to_value(row)?)
     }
 }
 
@@ -134,10 +153,7 @@ mod tests {
         let mut mapper = TableMapper::new();
 
         // Initial mapping
-        let initial_fields = vec![
-            create_test_field(1, "Name"),
-            create_test_field(2, "Email"),
-        ];
+        let initial_fields = vec![create_test_field(1, "Name"), create_test_field(2, "Email")];
         mapper.map_fields(initial_fields);
 
         // Remap with updated fields

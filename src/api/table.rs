@@ -1,7 +1,7 @@
 use std::{collections::HashMap, error::Error, vec};
 
 use reqwest::{header::AUTHORIZATION, Client, StatusCode};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{
@@ -22,6 +22,22 @@ pub struct RowsResponse {
     pub previous: Option<String>,
     /// The actual rows returned by the query
     pub results: Vec<HashMap<String, Value>>,
+}
+
+/// Response structure for typed table row queries
+///
+/// Contains the query results along with pagination information, where results
+/// are deserialized into the specified type.
+#[derive(Deserialize, Serialize, Debug)]
+pub struct TypedRowsResponse<T> {
+    /// Total count of records that match the query criteria, not just the current page
+    pub count: i32,
+    /// URL for the next page of results, if available
+    pub next: Option<String>,
+    /// URL for the previous page of results, if available
+    pub previous: Option<String>,
+    /// The actual rows returned by the query, deserialized into type T
+    pub results: Vec<T>,
 }
 
 #[cfg(test)]
@@ -311,6 +327,44 @@ impl RowRequestBuilder {
     /// # Errors
     /// Returns an error if the request fails or the response cannot be parsed
     pub async fn get(self) -> Result<RowsResponse, Box<dyn Error>> {
+        self.get_internal().await
+    }
+
+    /// Execute the query and return typed results
+    ///
+    /// Similar to get(), but deserializes the rows into the specified type.
+    ///
+    /// # Type Parameters
+    /// * `T` - The type to deserialize each row into. Must implement DeserializeOwned.
+    ///
+    /// # Returns
+    /// A TypedRowsResponse containing the matching rows deserialized as type T
+    ///
+    /// # Errors
+    /// Returns an error if the request fails or the response cannot be parsed
+    pub async fn get_typed<T>(self) -> Result<TypedRowsResponse<T>, Box<dyn Error>>
+    where
+        T: DeserializeOwned,
+    {
+        let table = self.table.clone().ok_or("Table instance is missing")?;
+        let mapper = table.mapper.ok_or("Table mapper is missing")?;
+        let response = self.get_internal().await?;
+
+        let typed_results = response
+            .results
+            .into_iter()
+            .map(|row| mapper.deserialize_row(row))
+            .collect::<Result<Vec<T>, _>>()?;
+
+        Ok(TypedRowsResponse {
+            count: response.count,
+            next: response.next,
+            previous: response.previous,
+            results: typed_results,
+        })
+    }
+
+    async fn get_internal(self) -> Result<RowsResponse, Box<dyn Error>> {
         let baserow = self.baserow.expect("Baserow instance is missing");
 
         let url = if let Some(view_id) = self.view_id {
