@@ -7,6 +7,8 @@
 /// # Example
 /// ```no_run
 /// use baserow_rs::{ConfigBuilder, Baserow, BaserowTableOperations, filter::Filter, api::client::BaserowClient};
+/// use std::collections::HashMap;
+/// use serde_json::Value;
 ///
 /// #[tokio::main]
 /// async fn main() {
@@ -23,7 +25,7 @@
 ///         .filter_by("Status", Filter::Equal, "Active")
 ///         .filter_by("Age", Filter::HigherThan, "18")
 ///         .filter_by("Name", Filter::Contains, "John")
-///         .get()
+///         .get::<HashMap<String, Value>>()
 ///         .await
 ///         .unwrap();
 /// }

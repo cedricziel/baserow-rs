@@ -52,6 +52,8 @@ pub trait BaserowTableOperations {
     /// # Example
     /// ```no_run
     /// use baserow_rs::{ConfigBuilder, Baserow, BaserowTableOperations, OrderDirection, api::client::BaserowClient};
+    /// use std::collections::HashMap;
+    /// use serde_json::Value;
     ///
     /// #[tokio::main]
     /// async fn main() {
@@ -65,7 +67,7 @@ pub trait BaserowTableOperations {
     ///
     ///     let results = table.rows()
     ///         .order_by("Created", OrderDirection::Desc)
-    ///         .get()
+    ///         .get::<HashMap<String, Value>>()
     ///         .await
     ///         .unwrap();
     /// }

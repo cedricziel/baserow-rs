@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .page_size(10) // Get 10 rows per page
         .filter_by("age", Filter::HigherThan, "18") // Only users over 18
         .order_by("name", OrderDirection::Asc) // Sort by name
-        .get_typed::<User>()
+        .get::<User>()
         .await?;
 
     println!("Found {} total users", response.count);
@@ -53,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .offset(10) // Skip first 10 results
             .filter_by("age", Filter::HigherThan, "18")
             .order_by("name", OrderDirection::Asc)
-            .get_typed::<User>()
+            .get::<User>()
             .await?;
 
         println!("\nNext page users:");

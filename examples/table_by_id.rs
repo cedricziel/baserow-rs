@@ -1,9 +1,10 @@
-use std::env;
+use std::{collections::HashMap, env};
 
 use baserow_rs::{
     api::client::BaserowClient, filter::Filter, Baserow, BaserowTableOperations, ConfigBuilder,
     OrderDirection,
 };
+use serde_json::Value;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -23,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .rows()
         .filter_by("field_1529", Filter::Equal, "testaaaaaaaaaa")
         .order_by("field_1529", OrderDirection::Asc)
-        .get()
+        .get::<HashMap<String, Value>>()
         .await?;
 
     println!("Rows: {:#?}", rows);

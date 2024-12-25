@@ -94,6 +94,8 @@ mod tests {
 /// ```no_run
 /// use baserow_rs::{ConfigBuilder, Baserow, BaserowTableOperations, OrderDirection, filter::Filter};
 /// use baserow_rs::api::client::BaserowClient;
+/// use std::collections::HashMap;
+/// use serde_json::Value;
 ///
 /// #[tokio::main]
 /// async fn main() {
@@ -110,7 +112,7 @@ mod tests {
 ///         .view(456)  // Query from a specific view
 ///         .filter_by("Status", Filter::Equal, "Active")
 ///         .order_by("Created", OrderDirection::Desc)
-///         .get()
+///         .get::<HashMap<String, Value>>()
 ///         .await
 ///         .unwrap();
 ///
@@ -122,6 +124,8 @@ mod tests {
 /// ```no_run
 /// # use baserow_rs::{ConfigBuilder, Baserow, BaserowTableOperations};
 /// # use baserow_rs::api::client::BaserowClient;
+/// # use std::collections::HashMap;
+/// # use serde_json::Value;
 /// # #[tokio::main]
 /// # async fn main() {
 /// #     let baserow = Baserow::with_configuration(ConfigBuilder::new().build());
@@ -130,7 +134,7 @@ mod tests {
 /// let page1 = table.clone().rows()
 ///     .page_size(25)
 ///     .offset(0)
-///     .get()
+///     .get::<HashMap<String, Value>>()
 ///     .await
 ///     .unwrap();
 ///
@@ -138,7 +142,7 @@ mod tests {
 /// let page2 = table.clone().rows()
 ///     .page_size(25)
 ///     .offset(25)
-///     .get()
+///     .get::<HashMap<String, Value>>()
 ///     .await
 ///     .unwrap();
 ///
@@ -316,45 +320,49 @@ impl RowRequestBuilder {
         }
     }
 
-    /// Execute the query and return the results
+    /// Execute the query and return results
     ///
     /// Sends the constructed query to Baserow and returns the matching rows
-    /// along with pagination information.
-    ///
-    /// # Returns
-    /// A RowsResponse containing the matching rows and metadata
-    ///
-    /// # Errors
-    /// Returns an error if the request fails or the response cannot be parsed
-    pub async fn get(self) -> Result<RowsResponse, Box<dyn Error>> {
-        self.get_internal().await
-    }
-
-    /// Execute the query and return typed results
-    ///
-    /// Similar to get(), but deserializes the rows into the specified type.
+    /// along with pagination information. The rows can be deserialized into
+    /// a specific type T, or left as raw HashMap values.
     ///
     /// # Type Parameters
     /// * `T` - The type to deserialize each row into. Must implement DeserializeOwned.
+    ///         For raw results, use HashMap<String, Value>.
     ///
     /// # Returns
     /// A TypedRowsResponse containing the matching rows deserialized as type T
     ///
     /// # Errors
     /// Returns an error if the request fails or the response cannot be parsed
-    pub async fn get_typed<T>(self) -> Result<TypedRowsResponse<T>, Box<dyn Error>>
+    pub async fn get<T>(self) -> Result<TypedRowsResponse<T>, Box<dyn Error>>
     where
-        T: DeserializeOwned,
+        T: DeserializeOwned + 'static,
     {
-        let table = self.table.clone().ok_or("Table instance is missing")?;
-        let mapper = table.mapper.ok_or("Table mapper is missing")?;
+        // Store table reference before moving self
+        let table = self.table.clone();
         let response = self.get_internal().await?;
 
-        let typed_results = response
-            .results
-            .into_iter()
-            .map(|row| mapper.deserialize_row(row))
-            .collect::<Result<Vec<T>, _>>()?;
+        // Try direct deserialization first
+        let results_clone = response.results.clone();
+        let typed_results = match serde_json::from_value::<Vec<T>>(Value::Array(
+            results_clone
+                .into_iter()
+                .map(|m| Value::Object(serde_json::Map::from_iter(m.into_iter())))
+                .collect(),
+        )) {
+            Ok(results) => results,
+            Err(_) => {
+                // Fall back to mapper for custom types
+                let table = table.ok_or("Table instance is missing")?;
+                let mapper = table.mapper.ok_or("Table mapper is missing")?;
+                response
+                    .results
+                    .into_iter()
+                    .map(|row| mapper.deserialize_row(row))
+                    .collect::<Result<Vec<T>, _>>()?
+            }
+        };
 
         Ok(TypedRowsResponse {
             count: response.count,
