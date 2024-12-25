@@ -30,7 +30,7 @@
 ///         .unwrap();
 /// }
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Filter {
     /// Exact match comparison
     /// Field value must exactly match the provided value
@@ -284,6 +284,7 @@ impl Filter {
 ///
 /// Combines a field name, filter operation, and value into a single filter condition
 /// that can be applied to a table query.
+#[derive(Clone, Debug)]
 pub struct FilterTriple {
     /// The name of the field to filter on
     pub field: String,

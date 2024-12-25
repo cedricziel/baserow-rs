@@ -424,6 +424,7 @@ pub struct TableField {
 /// Specifies the sort direction for table queries
 ///
 /// Used when ordering table results to determine ascending or descending order.
+#[derive(Clone, Debug)]
 pub enum OrderDirection {
     Asc,
     Desc,

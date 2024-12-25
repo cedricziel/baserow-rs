@@ -41,6 +41,36 @@ pub struct TypedRowsResponse<T> {
     pub results: Vec<T>,
 }
 
+/// Represents a query request for table rows
+///
+/// This struct encapsulates all the parameters that can be used to query rows
+/// from a Baserow table, including filtering, sorting, and pagination options.
+#[derive(Clone, Debug)]
+pub struct RowRequest {
+    /// Optional view ID to query rows from a specific view
+    pub view_id: Option<i32>,
+    /// Optional sorting criteria
+    pub order: Option<HashMap<String, OrderDirection>>,
+    /// Optional filter conditions
+    pub filter: Option<Vec<FilterTriple>>,
+    /// Optional page size for pagination
+    pub page_size: Option<i32>,
+    /// Optional offset for pagination
+    pub offset: Option<i32>,
+}
+
+impl Default for RowRequest {
+    fn default() -> Self {
+        Self {
+            view_id: None,
+            order: None,
+            filter: None,
+            page_size: None,
+            offset: None,
+        }
+    }
+}
+
 /// Builder for constructing table row queries
 ///
 /// Provides a fluent interface for building queries with filtering, sorting,
@@ -48,11 +78,7 @@ pub struct TypedRowsResponse<T> {
 pub struct RowRequestBuilder {
     baserow: Option<Baserow>,
     table: Option<BaserowTable>,
-    order: Option<HashMap<String, OrderDirection>>,
-    filter: Option<Vec<FilterTriple>>,
-    page_size: Option<i32>,
-    offset: Option<i32>,
-    view_id: Option<i32>,
+    request: RowRequest,
 }
 
 impl RowRequestBuilder {
@@ -60,36 +86,26 @@ impl RowRequestBuilder {
         Self {
             baserow: None,
             table: None,
-            order: None,
-            filter: None,
-            page_size: None,
-            offset: None,
-            view_id: None,
+            request: RowRequest::default(),
         }
     }
 
     /// Set the view ID to query rows from a specific view
-    pub fn view(self, id: i32) -> Self {
-        Self {
-            view_id: Some(id),
-            ..self
-        }
+    pub fn view(mut self, id: i32) -> Self {
+        self.request.view_id = Some(id);
+        self
     }
 
     /// Set the number of rows to return per page
-    pub fn page_size(self, size: i32) -> Self {
-        Self {
-            page_size: Some(size),
-            ..self
-        }
+    pub fn page_size(mut self, size: i32) -> Self {
+        self.request.page_size = Some(size);
+        self
     }
 
     /// Set the offset for pagination
-    pub fn offset(self, offset: i32) -> Self {
-        Self {
-            offset: Some(offset),
-            ..self
-        }
+    pub fn offset(mut self, offset: i32) -> Self {
+        self.request.offset = Some(offset);
+        self
     }
 
     pub fn with_table(self, table: BaserowTable) -> Self {
@@ -107,39 +123,31 @@ impl RowRequestBuilder {
     }
 
     /// Add sorting criteria to the query
-    pub fn order_by(self, field: &str, direction: OrderDirection) -> Self {
-        match self.order {
+    pub fn order_by(mut self, field: &str, direction: OrderDirection) -> Self {
+        match self.request.order {
             Some(mut order) => {
                 order.insert(String::from(field), direction);
-                Self {
-                    order: Some(order),
-                    ..self
-                }
+                self.request.order = Some(order);
             }
             None => {
                 let mut order = HashMap::new();
                 order.insert(String::from(field), direction);
-                Self {
-                    order: Some(order),
-                    ..self
-                }
+                self.request.order = Some(order);
             }
         }
+        self
     }
 
     /// Add a filter condition to the query
-    pub fn filter_by(self, field: &str, filter_op: Filter, value: &str) -> Self {
-        match self.filter {
+    pub fn filter_by(mut self, field: &str, filter_op: Filter, value: &str) -> Self {
+        match self.request.filter {
             Some(mut filter) => {
                 filter.push(FilterTriple {
                     field: String::from(field),
                     filter: filter_op,
                     value: String::from(value),
                 });
-                Self {
-                    filter: Some(filter),
-                    ..self
-                }
+                self.request.filter = Some(filter);
             }
             None => {
                 let mut filter: Vec<FilterTriple> = vec![];
@@ -148,124 +156,20 @@ impl RowRequestBuilder {
                     filter: filter_op,
                     value: String::from(value),
                 });
-                Self {
-                    filter: Some(filter),
-                    ..self
-                }
+                self.request.filter = Some(filter);
             }
         }
+        self
     }
 
-    /// Execute the query and return results
+    /// Execute the query and return typed results
     pub async fn get<T>(self) -> Result<TypedRowsResponse<T>, Box<dyn Error>>
     where
         T: DeserializeOwned + 'static,
     {
-        // Store table reference before moving self
-        let table = self.table.clone();
-        let response = self.get_internal().await?;
-
-        // Try direct deserialization first
-        let results_clone = response.results.clone();
-        let typed_results = match serde_json::from_value::<Vec<T>>(Value::Array(
-            results_clone
-                .into_iter()
-                .map(|m| Value::Object(serde_json::Map::from_iter(m.into_iter())))
-                .collect(),
-        )) {
-            Ok(results) => results,
-            Err(_) => {
-                // Fall back to mapper for custom types
-                let table = table.ok_or("Table instance is missing")?;
-                let mapper = table.mapper.ok_or("Table mapper is missing")?;
-                response
-                    .results
-                    .into_iter()
-                    .map(|row| mapper.deserialize_row(row))
-                    .collect::<Result<Vec<T>, _>>()?
-            }
-        };
-
-        Ok(TypedRowsResponse {
-            count: response.count,
-            next: response.next,
-            previous: response.previous,
-            results: typed_results,
-        })
-    }
-
-    async fn get_internal(self) -> Result<RowsResponse, Box<dyn Error>> {
+        let table = self.table.expect("Table instance is missing");
         let baserow = self.baserow.expect("Baserow instance is missing");
-
-        let url = if let Some(view_id) = self.view_id {
-            format!(
-                "{}/api/database/views/{}/",
-                &baserow.configuration.base_url, view_id
-            )
-        } else {
-            format!(
-                "{}/api/database/rows/table/{}/",
-                &baserow.configuration.base_url,
-                self.table.as_ref().unwrap().id.unwrap()
-            )
-        };
-
-        let mut req = Client::new().get(url);
-
-        if baserow.configuration.jwt.is_some() {
-            req = req.header(
-                AUTHORIZATION,
-                format!("JWT {}", &baserow.configuration.database_token.unwrap()),
-            );
-        } else if baserow.configuration.database_token.is_some() {
-            req = req.header(
-                AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.database_token.unwrap()),
-            );
-        }
-
-        if self.order.is_some() {
-            let mut order = String::new();
-            for (field, direction) in self.order.unwrap() {
-                order.push_str(&format!(
-                    "{}{}",
-                    match direction {
-                        OrderDirection::Asc => "",
-                        OrderDirection::Desc => "-",
-                    },
-                    field
-                ));
-            }
-
-            req = req.query(&[("order_by", order)]);
-        }
-
-        if self.filter.is_some() {
-            for triple in self.filter.unwrap() {
-                req = req.query(&[(
-                    &format!("filter__{}__{}", triple.field, triple.filter.as_str()),
-                    triple.value,
-                )]);
-            }
-        }
-
-        if let Some(size) = self.page_size {
-            req = req.query(&[("size", size.to_string())]);
-        }
-
-        if let Some(offset) = self.offset {
-            req = req.query(&[("offset", offset.to_string())]);
-        }
-
-        let resp = req.send().await?;
-
-        match resp.status() {
-            StatusCode::OK => {
-                let rows: RowsResponse = resp.json().await?;
-                Ok(rows)
-            }
-            _ => Err(Box::new(resp.error_for_status().unwrap_err())),
-        }
+        table.get(baserow, self.request).await
     }
 }
 
@@ -334,6 +238,24 @@ pub trait BaserowTableOperations {
 
     #[deprecated(since = "0.1.0", note = "Use the query() method instead")]
     fn rows(self) -> RowRequestBuilder;
+
+    /// Execute a row request and return typed results
+    ///
+    /// # Type Parameters
+    /// * `T` - The type to deserialize the results into
+    ///
+    /// # Arguments
+    /// * `request` - The query parameters encapsulated in a RowRequest
+    ///
+    /// # Returns
+    /// A TypedRowsResponse containing the query results and pagination information
+    async fn get<T>(
+        &self,
+        baserow: Baserow,
+        request: RowRequest,
+    ) -> Result<TypedRowsResponse<T>, Box<dyn Error>>
+    where
+        T: DeserializeOwned + 'static;
 
     /// Creates a single record in the table
     ///
@@ -442,6 +364,111 @@ impl BaserowTableOperations for BaserowTable {
 
     fn rows(self) -> RowRequestBuilder {
         self.query()
+    }
+
+    async fn get<T>(
+        &self,
+        baserow: Baserow,
+        request: RowRequest,
+    ) -> Result<TypedRowsResponse<T>, Box<dyn Error>>
+    where
+        T: DeserializeOwned + 'static,
+    {
+        let url = if let Some(view_id) = request.view_id {
+            format!(
+                "{}/api/database/views/{}/",
+                &baserow.configuration.base_url, view_id
+            )
+        } else {
+            format!(
+                "{}/api/database/rows/table/{}/",
+                &baserow.configuration.base_url,
+                self.id.unwrap()
+            )
+        };
+
+        let mut req = Client::new().get(url);
+
+        if baserow.configuration.jwt.is_some() {
+            req = req.header(
+                AUTHORIZATION,
+                format!("JWT {}", &baserow.configuration.database_token.unwrap()),
+            );
+        } else if baserow.configuration.database_token.is_some() {
+            req = req.header(
+                AUTHORIZATION,
+                format!("Token {}", &baserow.configuration.database_token.unwrap()),
+            );
+        }
+
+        if let Some(order) = request.order {
+            let mut order_str = String::new();
+            for (field, direction) in order {
+                order_str.push_str(&format!(
+                    "{}{}",
+                    match direction {
+                        OrderDirection::Asc => "",
+                        OrderDirection::Desc => "-",
+                    },
+                    field
+                ));
+            }
+
+            req = req.query(&[("order_by", order_str)]);
+        }
+
+        if let Some(filter) = request.filter {
+            for triple in filter {
+                req = req.query(&[(
+                    &format!("filter__{}__{}", triple.field, triple.filter.as_str()),
+                    triple.value,
+                )]);
+            }
+        }
+
+        if let Some(size) = request.page_size {
+            req = req.query(&[("size", size.to_string())]);
+        }
+
+        if let Some(offset) = request.offset {
+            req = req.query(&[("offset", offset.to_string())]);
+        }
+
+        let resp = req.send().await?;
+
+        match resp.status() {
+            StatusCode::OK => {
+                let response: RowsResponse = resp.json().await?;
+
+                // Try direct deserialization first
+                let results_clone = response.results.clone();
+                let typed_results = match serde_json::from_value::<Vec<T>>(Value::Array(
+                    results_clone
+                        .into_iter()
+                        .map(|m| Value::Object(serde_json::Map::from_iter(m.into_iter())))
+                        .collect(),
+                )) {
+                    Ok(results) => results,
+                    Err(_) => {
+                        // Fall back to mapper for custom types
+                        let mapper = self.mapper.clone().ok_or("Table mapper is missing. Call auto_map() first when using typed responses.")?;
+                        response
+                            .results
+                            .into_iter()
+                            .map(|row| mapper.deserialize_row(row))
+                            .collect::<Result<Vec<T>, _>>()?
+                    }
+                };
+
+                Ok(TypedRowsResponse {
+                    count: response.count,
+                    next: response.next,
+                    previous: response.previous,
+                    results: typed_results,
+                })
+            }
+            _ => Err(Box::new(resp.error_for_status().unwrap_err())),
+        }
     }
 
     async fn create_one(
