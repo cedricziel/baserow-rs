@@ -757,6 +757,182 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_view_query() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let mock = server
+            .mock("GET", "/api/database/rows/table/1234/")
+            .match_query(mockito::Matcher::UrlEncoded("view_id".into(), "5678".into()))
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_header(AUTHORIZATION, format!("Token {}", "123").as_str())
+            .with_body(r#"{"count": 1, "next": null, "previous": null, "results": [{"id": 1, "field_1": "test"}]}"#)
+            .create();
+
+        let configuration = Configuration {
+            base_url: mock_url,
+            database_token: Some("123".to_string()),
+            email: None,
+            password: None,
+            jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
+        };
+        let baserow = Baserow::with_configuration(configuration);
+        let table = baserow.table_by_id(1234);
+
+        let result = table
+            .query()
+            .view(5678)
+            .get::<HashMap<String, Value>>()
+            .await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert_eq!(response.count, 1);
+        assert_eq!(response.results[0]["field_1"], Value::String("test".to_string()));
+
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_view_query_with_filters() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let mock = server
+            .mock("GET", "/api/database/rows/table/1234/")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("view_id".into(), "5678".into()),
+                mockito::Matcher::UrlEncoded("filter__field_1__equal".into(), "test".into()),
+                mockito::Matcher::UrlEncoded("order_by".into(), "field_1".into()),
+            ]))
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_header(AUTHORIZATION, format!("Token {}", "123").as_str())
+            .with_body(r#"{"count": 1, "next": null, "previous": null, "results": [{"id": 1, "field_1": "test"}]}"#)
+            .create();
+
+        let configuration = Configuration {
+            base_url: mock_url,
+            database_token: Some("123".to_string()),
+            email: None,
+            password: None,
+            jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
+        };
+        let baserow = Baserow::with_configuration(configuration);
+        let table = baserow.table_by_id(1234);
+
+        let result = table
+            .query()
+            .view(5678)
+            .filter_by("field_1", filter::Filter::Equal, "test")
+            .order_by("field_1", OrderDirection::Asc)
+            .get::<HashMap<String, Value>>()
+            .await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert_eq!(response.count, 1);
+        assert_eq!(response.results[0]["field_1"], Value::String("test".to_string()));
+
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_view_query_with_pagination() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let mock = server
+            .mock("GET", "/api/database/rows/table/1234/")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("view_id".into(), "5678".into()),
+                mockito::Matcher::UrlEncoded("size".into(), "2".into()),
+                mockito::Matcher::UrlEncoded("offset".into(), "1".into()),
+            ]))
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_header(AUTHORIZATION, format!("Token {}", "123").as_str())
+            .with_body(r#"{"count": 3, "next": "http://example.com/next", "previous": "http://example.com/prev", "results": [{"id": 2, "field_1": "test2"}, {"id": 3, "field_1": "test3"}]}"#)
+            .create();
+
+        let configuration = Configuration {
+            base_url: mock_url,
+            database_token: Some("123".to_string()),
+            email: None,
+            password: None,
+            jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
+        };
+        let baserow = Baserow::with_configuration(configuration);
+        let table = baserow.table_by_id(1234);
+
+        let result = table
+            .query()
+            .view(5678)
+            .page_size(2)
+            .offset(1)
+            .get::<HashMap<String, Value>>()
+            .await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert_eq!(response.count, 3);
+        assert_eq!(response.next, Some("http://example.com/next".to_string()));
+        assert_eq!(response.previous, Some("http://example.com/prev".to_string()));
+        assert_eq!(response.results.len(), 2);
+        assert_eq!(response.results[0]["field_1"], Value::String("test2".to_string()));
+        assert_eq!(response.results[1]["field_1"], Value::String("test3".to_string()));
+
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_view_query_invalid_view() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let mock = server
+            .mock("GET", "/api/database/rows/table/1234/")
+            .match_query(mockito::Matcher::UrlEncoded("view_id".into(), "9999".into()))
+            .with_status(404)
+            .with_header("Content-Type", "application/json")
+            .with_header(AUTHORIZATION, format!("Token {}", "123").as_str())
+            .with_body(r#"{"error": "View does not exist."}"#)
+            .create();
+
+        let configuration = Configuration {
+            base_url: mock_url,
+            database_token: Some("123".to_string()),
+            email: None,
+            password: None,
+            jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
+        };
+        let baserow = Baserow::with_configuration(configuration);
+        let table = baserow.table_by_id(1234);
+
+        let result = table
+            .query()
+            .view(9999)
+            .get::<HashMap<String, Value>>()
+            .await;
+
+        assert!(result.is_err());
+        mock.assert();
+    }
+
+    #[tokio::test]
     async fn test_table_fields() {
         let mut server = mockito::Server::new_async().await;
         let mock_url = server.url();

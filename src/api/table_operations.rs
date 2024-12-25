@@ -374,20 +374,17 @@ impl BaserowTableOperations for BaserowTable {
     where
         T: DeserializeOwned + 'static,
     {
-        let url = if let Some(view_id) = request.view_id {
-            format!(
-                "{}/api/database/views/{}/",
-                &baserow.configuration.base_url, view_id
-            )
-        } else {
-            format!(
-                "{}/api/database/rows/table/{}/",
-                &baserow.configuration.base_url,
-                self.id.unwrap()
-            )
-        };
+        let url = format!(
+            "{}/api/database/rows/table/{}/",
+            &baserow.configuration.base_url,
+            self.id.unwrap()
+        );
 
         let mut req = Client::new().get(url);
+
+        if let Some(view_id) = request.view_id {
+            req = req.query(&[("view_id", view_id.to_string())]);
+        }
 
         if baserow.configuration.jwt.is_some() {
             req = req.header(
