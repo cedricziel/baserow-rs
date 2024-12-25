@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.0.0](https://github.com/cedricziel/baserow-rs/compare/v0.8.0...v1.0.0) (2024-12-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* condense get_one_typed
+* condense get method on table
+* move request building to table operations
+* move get into BaserowTable
+* condense get_one_typed ([#30](https://github.com/cedricziel/baserow-rs/issues/30))
+
+### Bug Fixes
+
+* correct endpoint for view and add tests ([b379fde](https://github.com/cedricziel/baserow-rs/commit/b379fded9f62131a052c98f9524e3075b27fb747))
+
+
+### Miscellaneous Chores
+
+* condense get method on table ([b379fde](https://github.com/cedricziel/baserow-rs/commit/b379fded9f62131a052c98f9524e3075b27fb747))
+* condense get_one_typed ([b379fde](https://github.com/cedricziel/baserow-rs/commit/b379fded9f62131a052c98f9524e3075b27fb747))
+* condense get_one_typed ([#30](https://github.com/cedricziel/baserow-rs/issues/30)) ([b379fde](https://github.com/cedricziel/baserow-rs/commit/b379fded9f62131a052c98f9524e3075b27fb747))
+* move get into BaserowTable ([b379fde](https://github.com/cedricziel/baserow-rs/commit/b379fded9f62131a052c98f9524e3075b27fb747))
+* move request building to table operations ([b379fde](https://github.com/cedricziel/baserow-rs/commit/b379fded9f62131a052c98f9524e3075b27fb747))
+
 ## [0.8.0](https://github.com/cedricziel/baserow-rs/compare/v0.7.0...v0.8.0) (2024-12-25)
 
 
