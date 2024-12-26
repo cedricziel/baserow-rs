@@ -57,6 +57,8 @@ pub struct RowRequest {
     pub page_size: Option<i32>,
     /// Optional offset for pagination
     pub offset: Option<i32>,
+    /// Optional flag to use user-friendly field names in the response
+    pub user_field_names: Option<bool>,
 }
 
 impl Default for RowRequest {
@@ -67,6 +69,7 @@ impl Default for RowRequest {
             filter: None,
             page_size: None,
             offset: None,
+            user_field_names: None,
         }
     }
 }
@@ -105,6 +108,12 @@ impl RowRequestBuilder {
     /// Set the offset for pagination
     pub fn offset(mut self, offset: i32) -> Self {
         self.request.offset = Some(offset);
+        self
+    }
+
+    /// Set whether to use user-friendly field names in the response
+    pub fn user_field_names(mut self, enabled: bool) -> Self {
+        self.request.user_field_names = Some(enabled);
         self
     }
 
@@ -429,6 +438,10 @@ impl BaserowTableOperations for BaserowTable {
 
         if let Some(offset) = request.offset {
             req = req.query(&[("offset", offset.to_string())]);
+        }
+
+        if let Some(user_field_names) = request.user_field_names {
+            req = req.query(&[("user_field_names", user_field_names.to_string())]);
         }
 
         let resp = req.send().await?;
