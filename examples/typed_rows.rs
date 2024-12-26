@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .clone()
             .query()
             .page_size(10)
-            .offset(10) // Skip first 10 results
+            .page(2) // Get second page
             .filter_by("age", Filter::HigherThan, "18")
             .order_by("name", OrderDirection::Asc)
             .get::<User>()

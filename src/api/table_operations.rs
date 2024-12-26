@@ -55,8 +55,8 @@ pub struct RowRequest {
     pub filter: Option<Vec<FilterTriple>>,
     /// Optional page size for pagination
     pub page_size: Option<i32>,
-    /// Optional offset for pagination
-    pub offset: Option<i32>,
+    /// Optional page number for pagination
+    pub page: Option<i32>,
     /// Optional flag to use user-friendly field names in the response
     pub user_field_names: Option<bool>,
 }
@@ -68,7 +68,7 @@ impl Default for RowRequest {
             order: None,
             filter: None,
             page_size: None,
-            offset: None,
+            page: None,
             user_field_names: None,
         }
     }
@@ -105,9 +105,9 @@ impl RowRequestBuilder {
         self
     }
 
-    /// Set the offset for pagination
-    pub fn offset(mut self, offset: i32) -> Self {
-        self.request.offset = Some(offset);
+    /// Set the page number for pagination
+    pub fn page(mut self, page: i32) -> Self {
+        self.request.page = Some(page);
         self
     }
 
@@ -455,8 +455,8 @@ impl BaserowTableOperations for BaserowTable {
             req = req.query(&[("size", size.to_string())]);
         }
 
-        if let Some(offset) = request.offset {
-            req = req.query(&[("offset", offset.to_string())]);
+        if let Some(page) = request.page {
+            req = req.query(&[("page", page.to_string())]);
         }
 
         if let Some(user_field_names) = request.user_field_names {
@@ -547,7 +547,11 @@ impl BaserowTableOperations for BaserowTable {
 
                 // Convert response field IDs to names if auto_map is enabled
                 if self.mapper.is_some() && user_field_names != Some(true) {
-                    Ok(self.mapper.as_ref().unwrap().convert_to_field_names(response_data))
+                    Ok(self
+                        .mapper
+                        .as_ref()
+                        .unwrap()
+                        .convert_to_field_names(response_data))
                 } else {
                     Ok(response_data)
                 }
@@ -659,7 +663,11 @@ impl BaserowTableOperations for BaserowTable {
 
                 // Convert response field IDs to names if auto_map is enabled
                 if self.mapper.is_some() && user_field_names != Some(true) {
-                    Ok(self.mapper.as_ref().unwrap().convert_to_field_names(response_data))
+                    Ok(self
+                        .mapper
+                        .as_ref()
+                        .unwrap()
+                        .convert_to_field_names(response_data))
                 } else {
                     Ok(response_data)
                 }
