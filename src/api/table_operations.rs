@@ -67,8 +67,8 @@ impl Default for RowRequest {
             view_id: None,
             order: None,
             filter: None,
-            page_size: None,
-            page: None,
+            page_size: Some(100),
+            page: Some(1),
             user_field_names: None,
         }
     }
@@ -100,12 +100,28 @@ impl RowRequestBuilder {
     }
 
     /// Set the number of rows to return per page
+    ///
+    /// # Arguments
+    /// * `size` - The number of rows per page (must be positive)
+    #[deprecated(since = "1.1.0", note = "Use `size` instead")]
     pub fn page_size(mut self, size: i32) -> Self {
         self.request.page_size = Some(size);
         self
     }
 
+    /// Set the number of rows to return per page
+    ///
+    /// # Arguments
+    /// * `size` - The number of rows per page (must be positive)
+    pub fn size(mut self, size: i32) -> Self {
+        self.request.page_size = Some(size);
+        self
+    }
+
     /// Set the page number for pagination
+    ///
+    /// # Arguments
+    /// * `page` - The page number (must be positive)
     pub fn page(mut self, page: i32) -> Self {
         self.request.page = Some(page);
         self
@@ -402,6 +418,18 @@ impl BaserowTableOperations for BaserowTable {
     where
         T: DeserializeOwned + 'static,
     {
+        // Validate pagination parameters
+        if let Some(size) = request.page_size {
+            if size <= 0 {
+                return Err("Page size must be a positive integer".into());
+            }
+        }
+        if let Some(page) = request.page {
+            if page <= 0 {
+                return Err("Page number must be a positive integer".into());
+            }
+        }
+
         let url = format!(
             "{}/api/database/rows/table/{}/",
             &baserow.configuration.base_url,
