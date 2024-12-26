@@ -27,7 +27,7 @@
 //!     let mut data = HashMap::new();
 //!     data.insert("Name".to_string(), Value::String("Test".to_string()));
 //!
-//!     let result = table.create_one(data).await.unwrap();
+//!     let result = table.create_one(data, None).await.unwrap();
 //!     println!("Created record: {:?}", result);
 //! }
 //! ```
@@ -481,7 +481,7 @@ mod tests {
         let mut record = HashMap::new();
         record.insert("field_1".to_string(), Value::String("test".to_string()));
 
-        let result = table.create_one(record).await;
+        let result = table.create_one(record, None).await;
         assert!(result.is_ok());
 
         let created_record = result.unwrap();
@@ -516,7 +516,8 @@ mod tests {
         let baserow = Baserow::with_configuration(configuration);
         let table = baserow.table_by_id(1234);
 
-        let result: Result<HashMap<String, Value>, Box<dyn Error>> = table.get_one(5678).await;
+        let result: Result<HashMap<String, Value>, Box<dyn Error>> =
+            table.get_one(5678, None).await;
         assert!(result.is_ok());
 
         let record = result.unwrap();
@@ -555,7 +556,7 @@ mod tests {
         let mut record = HashMap::new();
         record.insert("field_1".to_string(), Value::String("updated".to_string()));
 
-        let result = table.update(5678, record).await;
+        let result = table.update(5678, record, None).await;
         assert!(result.is_ok());
 
         let updated_record = result.unwrap();
@@ -905,6 +906,53 @@ mod tests {
         assert_eq!(
             response.results[1]["field_1"],
             Value::String("test3".to_string())
+        );
+
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_query_with_user_field_names() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let mock = server
+            .mock("GET", "/api/database/rows/table/1234/")
+            .match_query(mockito::Matcher::UrlEncoded(
+                "user_field_names".into(),
+                "true".into(),
+            ))
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_header(AUTHORIZATION, format!("Token {}", "123").as_str())
+            .with_body(r#"{"count": 1, "next": null, "previous": null, "results": [{"User Name": "test"}]}"#)
+            .create();
+
+        let configuration = Configuration {
+            base_url: mock_url,
+            database_token: Some("123".to_string()),
+            email: None,
+            password: None,
+            jwt: None,
+            access_token: None,
+            refresh_token: None,
+            user: None,
+        };
+        let baserow = Baserow::with_configuration(configuration);
+        let table = baserow.table_by_id(1234);
+
+        let result = table
+            .query()
+            .user_field_names(true)
+            .get::<HashMap<String, Value>>()
+            .await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert_eq!(response.count, 1);
+        assert_eq!(
+            response.results[0]["User Name"],
+            Value::String("test".to_string())
         );
 
         mock.assert();

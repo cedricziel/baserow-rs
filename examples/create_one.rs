@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     record.insert("field_1529".to_string(), Value::String("test".to_string()));
 
     // retrieve a table by id
-    let rows = baserow.table_by_id(176).create_one(record).await?;
+    let rows = baserow.table_by_id(176).create_one(record, None).await?;
 
     println!("Rows: {:#?}", rows);
 

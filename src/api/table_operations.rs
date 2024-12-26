@@ -57,6 +57,8 @@ pub struct RowRequest {
     pub page_size: Option<i32>,
     /// Optional offset for pagination
     pub offset: Option<i32>,
+    /// Optional flag to use user-friendly field names in the response
+    pub user_field_names: Option<bool>,
 }
 
 impl Default for RowRequest {
@@ -67,6 +69,7 @@ impl Default for RowRequest {
             filter: None,
             page_size: None,
             offset: None,
+            user_field_names: None,
         }
     }
 }
@@ -105,6 +108,12 @@ impl RowRequestBuilder {
     /// Set the offset for pagination
     pub fn offset(mut self, offset: i32) -> Self {
         self.request.offset = Some(offset);
+        self
+    }
+
+    /// Set whether to use user-friendly field names in the response
+    pub fn user_field_names(mut self, enabled: bool) -> Self {
+        self.request.user_field_names = Some(enabled);
         self
     }
 
@@ -197,7 +206,7 @@ impl RowRequestBuilder {
 ///     // Create a new record
 ///     let mut data = HashMap::new();
 ///     data.insert("Name".to_string(), Value::String("Test".to_string()));
-///     let result = table.create_one(data).await.unwrap();
+///     let result = table.create_one(data, None).await.unwrap();
 /// }
 /// ```
 #[async_trait]
@@ -264,12 +273,21 @@ pub trait BaserowTableOperations {
     ///
     /// # Returns
     /// The created record including any auto-generated fields (like ID)
+    /// Creates a single record in the table with optional user-friendly field names
+    ///
+    /// # Arguments
+    /// * `data` - A map of field names to values representing the record to create
+    /// * `user_field_names` - Whether to use user-friendly field names in the response
+    ///
+    /// # Returns
+    /// The created record including any auto-generated fields (like ID)
     async fn create_one(
         self,
         data: HashMap<String, Value>,
+        user_field_names: Option<bool>,
     ) -> Result<HashMap<String, Value>, Box<dyn Error>>;
 
-    /// Retrieves a single record from the table by ID
+    /// Retrieves a single record from the table by ID with optional user-friendly field names
     ///
     /// # Type Parameters
     /// * `T` - The type to deserialize into. Defaults to HashMap<String, Value>.
@@ -305,18 +323,18 @@ pub trait BaserowTableOperations {
     ///     let table = baserow.table_by_id(1234);
     ///
     ///     // Get as HashMap (default)
-    ///     let row: HashMap<String, Value> = table.clone().get_one(1).await.unwrap();
+    ///     let row: HashMap<String, Value> = table.clone().get_one(1, None).await.unwrap();
     ///
     ///     // Get as typed struct
     ///     let user: User = table.auto_map()
     ///         .await
     ///         .unwrap()
-    ///         .get_one(1)
+    ///         .get_one(1, None)
     ///         .await
     ///         .unwrap();
     /// }
     /// ```
-    async fn get_one<T>(self, id: u64) -> Result<T, Box<dyn Error>>
+    async fn get_one<T>(self, id: u64, user_field_names: Option<bool>) -> Result<T, Box<dyn Error>>
     where
         T: DeserializeOwned + 'static;
 
@@ -328,10 +346,20 @@ pub trait BaserowTableOperations {
     ///
     /// # Returns
     /// The updated record
+    /// Updates a single record in the table with optional user-friendly field names
+    ///
+    /// # Arguments
+    /// * `id` - The unique identifier of the record to update
+    /// * `data` - A map of field names to new values
+    /// * `user_field_names` - Whether to use user-friendly field names in the response
+    ///
+    /// # Returns
+    /// The updated record
     async fn update(
         self,
         id: u64,
         data: HashMap<String, Value>,
+        user_field_names: Option<bool>,
     ) -> Result<HashMap<String, Value>, Box<dyn Error>>;
 
     /// Deletes a single record from the table
@@ -431,6 +459,10 @@ impl BaserowTableOperations for BaserowTable {
             req = req.query(&[("offset", offset.to_string())]);
         }
 
+        if let Some(user_field_names) = request.user_field_names {
+            req = req.query(&[("user_field_names", user_field_names.to_string())]);
+        }
+
         let resp = req.send().await?;
 
         match resp.status() {
@@ -471,6 +503,7 @@ impl BaserowTableOperations for BaserowTable {
     async fn create_one(
         self,
         data: HashMap<String, Value>,
+        user_field_names: Option<bool>,
     ) -> Result<HashMap<String, Value>, Box<dyn Error>> {
         let baserow = self.baserow.expect("Baserow instance is missing");
 
@@ -481,6 +514,18 @@ impl BaserowTableOperations for BaserowTable {
         );
 
         let mut req = baserow.client.post(url);
+
+        // Convert field names to IDs if auto_map is enabled
+        let request_data = if self.mapper.is_some() {
+            self.mapper.as_ref().unwrap().convert_to_field_ids(data)
+        } else {
+            data
+        };
+
+        // Use user_field_names parameter for response format
+        if let Some(use_names) = user_field_names {
+            req = req.query(&[("user_field_names", use_names.to_string())]);
+        }
 
         if baserow.configuration.jwt.is_some() {
             req = req.header(
@@ -494,15 +539,28 @@ impl BaserowTableOperations for BaserowTable {
             );
         }
 
-        let resp = req.json(&data).send().await?;
+        let resp = req.json(&request_data).send().await?;
 
         match resp.status() {
-            StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
+            StatusCode::OK => {
+                let response_data = resp.json::<HashMap<String, Value>>().await?;
+
+                // Convert response field IDs to names if auto_map is enabled
+                if self.mapper.is_some() && user_field_names != Some(true) {
+                    Ok(self.mapper.as_ref().unwrap().convert_to_field_names(response_data))
+                } else {
+                    Ok(response_data)
+                }
+            }
             _ => Err(Box::new(resp.error_for_status().unwrap_err())),
         }
     }
 
-    async fn get_one<T>(mut self, id: u64) -> Result<T, Box<dyn Error>>
+    async fn get_one<T>(
+        mut self,
+        id: u64,
+        user_field_names: Option<bool>,
+    ) -> Result<T, Box<dyn Error>>
     where
         T: DeserializeOwned + 'static,
     {
@@ -516,6 +574,10 @@ impl BaserowTableOperations for BaserowTable {
         );
 
         let mut req = baserow.client.get(url);
+
+        if let Some(use_names) = user_field_names {
+            req = req.query(&[("user_field_names", use_names.to_string())]);
+        }
 
         if baserow.configuration.jwt.is_some() {
             req = req.header(
@@ -552,6 +614,7 @@ impl BaserowTableOperations for BaserowTable {
         self,
         id: u64,
         data: HashMap<String, Value>,
+        user_field_names: Option<bool>,
     ) -> Result<HashMap<String, Value>, Box<dyn Error>> {
         let baserow = self.baserow.expect("Baserow instance is missing");
 
@@ -563,6 +626,18 @@ impl BaserowTableOperations for BaserowTable {
         );
 
         let mut req = baserow.client.patch(url);
+
+        // Convert field names to IDs if auto_map is enabled
+        let request_data = if self.mapper.is_some() {
+            self.mapper.as_ref().unwrap().convert_to_field_ids(data)
+        } else {
+            data
+        };
+
+        // Use user_field_names parameter for response format
+        if let Some(use_names) = user_field_names {
+            req = req.query(&[("user_field_names", use_names.to_string())]);
+        }
 
         if baserow.configuration.jwt.is_some() {
             req = req.header(
@@ -576,10 +651,19 @@ impl BaserowTableOperations for BaserowTable {
             );
         }
 
-        let resp = req.json(&data).send().await?;
+        let resp = req.json(&request_data).send().await?;
 
         match resp.status() {
-            StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
+            StatusCode::OK => {
+                let response_data = resp.json::<HashMap<String, Value>>().await?;
+
+                // Convert response field IDs to names if auto_map is enabled
+                if self.mapper.is_some() && user_field_names != Some(true) {
+                    Ok(self.mapper.as_ref().unwrap().convert_to_field_names(response_data))
+                } else {
+                    Ok(response_data)
+                }
+            }
             _ => Err(Box::new(resp.error_for_status().unwrap_err())),
         }
     }

@@ -14,26 +14,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     let baserow = Baserow::with_configuration(configuration);
+    let table = baserow.table_by_id(176);
 
-    let mut record: HashMap<String, Value> = HashMap::new();
+    // Approach 1: Using user_field_names parameter
+    let mut record = HashMap::new();
     record.insert("field_1529".to_string(), Value::String("test".to_string()));
+    let result = table.clone().create_one(record, Some(true)).await?;
+    println!("Created record with user_field_names=true: {:#?}", result);
 
-    // retrieve a table by id
-    let row = baserow.table_by_id(176).create_one(record, None).await?;
-
-    println!("Row created: {:#?}", row);
-
-    let row_id = row.get("id").unwrap().as_u64().unwrap();
-
-    let mut updated_record: HashMap<String, Value> = HashMap::new();
-    updated_record.insert("field_1529".to_string(), Value::String("test2".to_string()));
-
-    let updated_record = baserow
-        .table_by_id(176)
-        .update(row_id, updated_record, None)
-        .await?;
-
-    println!("Updated row: {:#?}", updated_record);
+    // Approach 2: Using auto_map()
+    let mapped_table = table.auto_map().await?;
+    let mut record = HashMap::new();
+    record.insert("Name".to_string(), Value::String("test".to_string())); // Use actual field name
+    let result = mapped_table.create_one(record, None).await?;
+    println!("Created record with auto_map: {:#?}", result);
 
     Ok(())
 }
