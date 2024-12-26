@@ -61,7 +61,7 @@ pub mod mapper;
 ///
 /// This struct holds all the configuration options needed to connect to a Baserow instance,
 /// including authentication credentials and API endpoints.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Configuration {
     base_url: String,
 
@@ -148,7 +148,7 @@ impl ConfigBuilder {
 ///
 /// This struct implements the BaserowClient trait and provides methods for all API operations.
 /// It handles authentication, request signing, and maintains the client state.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Baserow {
     configuration: Configuration,
     client: Client,
@@ -792,7 +792,10 @@ mod tests {
         assert!(result.is_ok());
         let response = result.unwrap();
         assert_eq!(response.count, 1);
-        assert_eq!(response.results[0]["field_1"], Value::String("test".to_string()));
+        assert_eq!(
+            response.results[0]["field_1"],
+            Value::String("test".to_string())
+        );
 
         mock.assert();
     }
@@ -839,7 +842,10 @@ mod tests {
         assert!(result.is_ok());
         let response = result.unwrap();
         assert_eq!(response.count, 1);
-        assert_eq!(response.results[0]["field_1"], Value::String("test".to_string()));
+        assert_eq!(
+            response.results[0]["field_1"],
+            Value::String("test".to_string())
+        );
 
         mock.assert();
     }
@@ -887,10 +893,19 @@ mod tests {
         let response = result.unwrap();
         assert_eq!(response.count, 3);
         assert_eq!(response.next, Some("http://example.com/next".to_string()));
-        assert_eq!(response.previous, Some("http://example.com/prev".to_string()));
+        assert_eq!(
+            response.previous,
+            Some("http://example.com/prev".to_string())
+        );
         assert_eq!(response.results.len(), 2);
-        assert_eq!(response.results[0]["field_1"], Value::String("test2".to_string()));
-        assert_eq!(response.results[1]["field_1"], Value::String("test3".to_string()));
+        assert_eq!(
+            response.results[0]["field_1"],
+            Value::String("test2".to_string())
+        );
+        assert_eq!(
+            response.results[1]["field_1"],
+            Value::String("test3".to_string())
+        );
 
         mock.assert();
     }
@@ -902,7 +917,10 @@ mod tests {
 
         let mock = server
             .mock("GET", "/api/database/rows/table/1234/")
-            .match_query(mockito::Matcher::UrlEncoded("view_id".into(), "9999".into()))
+            .match_query(mockito::Matcher::UrlEncoded(
+                "view_id".into(),
+                "9999".into(),
+            ))
             .with_status(404)
             .with_header("Content-Type", "application/json")
             .with_header(AUTHORIZATION, format!("Token {}", "123").as_str())

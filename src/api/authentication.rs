@@ -14,7 +14,7 @@ pub struct TokenResponse {
     pub user: User,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct User {
     pub first_name: String,
     pub username: String,
