@@ -515,6 +515,14 @@ impl BaserowTableOperations for BaserowTable {
 
         let mut req = baserow.client.post(url);
 
+        // Convert field names to IDs if auto_map is enabled
+        let request_data = if self.mapper.is_some() {
+            self.mapper.as_ref().unwrap().convert_to_field_ids(data)
+        } else {
+            data
+        };
+
+        // Use user_field_names parameter for response format
         if let Some(use_names) = user_field_names {
             req = req.query(&[("user_field_names", use_names.to_string())]);
         }
@@ -531,10 +539,19 @@ impl BaserowTableOperations for BaserowTable {
             );
         }
 
-        let resp = req.json(&data).send().await?;
+        let resp = req.json(&request_data).send().await?;
 
         match resp.status() {
-            StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
+            StatusCode::OK => {
+                let response_data = resp.json::<HashMap<String, Value>>().await?;
+
+                // Convert response field IDs to names if auto_map is enabled
+                if self.mapper.is_some() && user_field_names != Some(true) {
+                    Ok(self.mapper.as_ref().unwrap().convert_to_field_names(response_data))
+                } else {
+                    Ok(response_data)
+                }
+            }
             _ => Err(Box::new(resp.error_for_status().unwrap_err())),
         }
     }
@@ -610,6 +627,14 @@ impl BaserowTableOperations for BaserowTable {
 
         let mut req = baserow.client.patch(url);
 
+        // Convert field names to IDs if auto_map is enabled
+        let request_data = if self.mapper.is_some() {
+            self.mapper.as_ref().unwrap().convert_to_field_ids(data)
+        } else {
+            data
+        };
+
+        // Use user_field_names parameter for response format
         if let Some(use_names) = user_field_names {
             req = req.query(&[("user_field_names", use_names.to_string())]);
         }
@@ -626,10 +651,19 @@ impl BaserowTableOperations for BaserowTable {
             );
         }
 
-        let resp = req.json(&data).send().await?;
+        let resp = req.json(&request_data).send().await?;
 
         match resp.status() {
-            StatusCode::OK => Ok(resp.json::<HashMap<String, Value>>().await?),
+            StatusCode::OK => {
+                let response_data = resp.json::<HashMap<String, Value>>().await?;
+
+                // Convert response field IDs to names if auto_map is enabled
+                if self.mapper.is_some() && user_field_names != Some(true) {
+                    Ok(self.mapper.as_ref().unwrap().convert_to_field_names(response_data))
+                } else {
+                    Ok(response_data)
+                }
+            }
             _ => Err(Box::new(resp.error_for_status().unwrap_err())),
         }
     }

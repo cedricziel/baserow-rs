@@ -74,6 +74,46 @@ impl TableMapper {
     {
         serde_json::from_value(serde_json::to_value(row)?)
     }
+
+    /// Converts field IDs to field names in a row
+    ///
+    /// # Arguments
+    /// * `row` - The row data with field IDs as keys
+    ///
+    /// # Returns
+    /// * HashMap with field names as keys
+    pub fn convert_to_field_names(&self, row: HashMap<String, Value>) -> HashMap<String, Value> {
+        let mut converted = HashMap::new();
+        for (key, value) in row {
+            if let Some(field_id) = key.strip_prefix("field_").and_then(|id| id.parse::<u64>().ok()) {
+                if let Some(name) = self.get_field_name(field_id) {
+                    converted.insert(name, value);
+                    continue;
+                }
+            }
+            converted.insert(key, value);
+        }
+        converted
+    }
+
+    /// Converts field names to field IDs in a row
+    ///
+    /// # Arguments
+    /// * `row` - The row data with field names as keys
+    ///
+    /// # Returns
+    /// * HashMap with field IDs as keys
+    pub fn convert_to_field_ids(&self, row: HashMap<String, Value>) -> HashMap<String, Value> {
+        let mut converted = HashMap::new();
+        for (key, value) in row {
+            if let Some(id) = self.get_field_id(&key) {
+                converted.insert(format!("field_{}", id), value);
+                continue;
+            }
+            converted.insert(key, value);
+        }
+        converted
+    }
 }
 
 impl FieldMapper for TableMapper {
