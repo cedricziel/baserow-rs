@@ -75,201 +75,11 @@ impl Default for RowRequest {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ConfigBuilder;
-    use std::collections::HashMap;
-
-    #[derive(Debug, Deserialize, PartialEq)]
-    struct TestUser {
-        name: String,
-    }
-
-    #[tokio::test]
-    async fn test_auto_map_and_user_field_names_exclusivity() {
-        let mut server = mockito::Server::new_async().await;
-        let mock_url = server.url();
-
-        // Mock the fields endpoint
-        let fields_mock = server
-            .mock("GET", "/api/database/fields/table/1234/")
-            .with_status(200)
-            .with_header("Content-Type", "application/json")
-            .with_body(r#"[{"id": 1, "table_id": 1234, "name": "Name", "order": 0, "type": "text", "primary": true, "read_only": false}]"#)
-            .create();
-
-        // Mock the rows endpoint
-        let rows_mock = server
-            .mock("GET", "/api/database/rows/table/1234/")
-            .match_query(mockito::Matcher::Any)
-            .expect_at_least(1)
-            .with_status(200)
-            .with_header("Content-Type", "application/json")
-            .with_body(
-                r#"{"count": 1, "next": null, "previous": null, "results": [{"field_1": "test"}]}"#,
-            )
-            .create();
-
-        let configuration = ConfigBuilder::new()
-            .base_url(&mock_url)
-            .api_key("test-token")
-            .build();
-        let baserow = Baserow::with_configuration(configuration);
-        let table = baserow.table_by_id(1234);
-
-        // First test: auto_map should take precedence over user_field_names
-        let mapped_table = table.clone().auto_map().await.unwrap();
-        let query = mapped_table
-            .query()
-            .user_field_names(true) // This should be ignored since we have auto_map
-            .get::<HashMap<String, Value>>()
-            .await
-            .unwrap();
-
-        // Verify that user_field_names parameter was not included in the request
-        rows_mock.assert();
-        fields_mock.assert();
-    }
-
-    #[tokio::test]
-    async fn test_field_mapping_in_query_params() {
-        let mut server = mockito::Server::new_async().await;
-        let mock_url = server.url();
-
-        // Mock the fields endpoint
-        let fields_mock = server
-            .mock("GET", "/api/database/fields/table/1234/")
-            .with_status(200)
-            .with_header("Content-Type", "application/json")
-            .with_body(r#"[
-                {"id": 1, "table_id": 1234, "name": "name", "order": 0, "type": "text", "primary": true, "read_only": false},
-                {"id": 2, "table_id": 1234, "name": "age", "order": 1, "type": "number", "primary": false, "read_only": false}
-            ]"#)
-            .create();
-
-        // Mock the rows endpoint with field ID mapping
-        let rows_mock = server
-            .mock("GET", "/api/database/rows/table/1234/")
-            .match_query(mockito::Matcher::AllOf(vec![
-                mockito::Matcher::UrlEncoded(
-                    "order_by".into(),
-                    "field_1".into(), // Should use field_1 instead of "name"
-                ),
-                mockito::Matcher::UrlEncoded(
-                    "filter__field_2__equal".into(), // Should use field_2 instead of "age"
-                    "25".into(),
-                ),
-            ]))
-            .with_status(200)
-            .with_header("Content-Type", "application/json")
-            .with_body(r#"{"count": 1, "next": null, "previous": null, "results": [{"1": "John", "2": 25}]}"#)
-            .create();
-
-        let configuration = ConfigBuilder::new()
-            .base_url(&mock_url)
-            .api_key("test-token")
-            .build();
-        let baserow = Baserow::with_configuration(configuration);
-        let table = baserow.table_by_id(1234);
-
-        // Test that field names are properly mapped to IDs in query parameters
-        let mapped_table = table.auto_map().await.unwrap();
-        let _result = mapped_table
-            .query()
-            .order_by("name", OrderDirection::Asc)
-            .filter_by("age", Filter::Equal, "25")
-            .get::<HashMap<String, Value>>()
-            .await
-            .unwrap();
-
-        // Verify that the request was made with mapped field IDs
-        fields_mock.assert();
-        rows_mock.assert();
-    }
-
-    #[tokio::test]
-    async fn test_struct_deserialization_with_both_options() {
-        let mut server = mockito::Server::new_async().await;
-        let mock_url = server.url();
-
-        // Mock the fields endpoint for auto_map
-        let fields_mock = server
-            .mock("GET", "/api/database/fields/table/1234/")
-            .with_status(200)
-            .with_header("Content-Type", "application/json")
-            .with_body(r#"[{"id": 1, "table_id": 1234, "name": "name", "order": 0, "type": "text", "primary": true, "read_only": false}]"#)
-            .create();
-
-        // Mock the rows endpoint for auto_map test
-        let rows_mock_auto_map = server
-            .mock("GET", "/api/database/rows/table/1234/")
-            .match_query(mockito::Matcher::Any)
-            .with_status(200)
-            .with_header("Content-Type", "application/json")
-            .with_body(
-                r#"{"count": 1, "next": null, "previous": null, "results": [{"1": "John"}]}"#,
-            )
-            .create();
-
-        // Mock the rows endpoint for user_field_names test
-        let rows_mock_user_names = server
-            .mock("GET", "/api/database/rows/table/1234/")
-            .match_query(mockito::Matcher::AllOf(vec![mockito::Matcher::UrlEncoded(
-                "user_field_names".into(),
-                "true".into(),
-            )]))
-            .with_status(200)
-            .with_header("Content-Type", "application/json")
-            .with_body(
-                r#"{"count": 1, "next": null, "previous": null, "results": [{"name": "John"}]}"#,
-            )
-            .create();
-
-        let configuration = ConfigBuilder::new()
-            .base_url(&mock_url)
-            .api_key("test-token")
-            .build();
-        let baserow = Baserow::with_configuration(configuration);
-        let table = baserow.table_by_id(1234);
-
-        // Test auto_map deserialization
-        let mapped_table = table.clone().auto_map().await.unwrap();
-        let auto_map_result = mapped_table.query().get::<TestUser>().await.unwrap();
-
-        assert_eq!(
-            auto_map_result.results[0],
-            TestUser {
-                name: "John".to_string()
-            }
-        );
-
-        // Test user_field_names deserialization
-        let user_names_result = table
-            .query()
-            .user_field_names(true)
-            .get::<TestUser>()
-            .await
-            .unwrap();
-
-        assert_eq!(
-            user_names_result.results[0],
-            TestUser {
-                name: "John".to_string()
-            }
-        );
-
-        // Verify the mocks were called the expected number of times
-        fields_mock.assert();
-        rows_mock_auto_map.assert();
-        rows_mock_user_names.assert();
-    }
-}
-
 /// Builder for constructing table row queries
 ///
 /// Provides a fluent interface for building queries with filtering, sorting,
 /// and other options.
+#[derive(Default)]
 pub struct RowRequestBuilder {
     baserow: Option<Baserow>,
     table: Option<BaserowTable>,
@@ -277,7 +87,7 @@ pub struct RowRequestBuilder {
 }
 
 impl RowRequestBuilder {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             baserow: None,
             table: None,
@@ -291,10 +101,6 @@ impl RowRequestBuilder {
         self
     }
 
-    /// Set the number of rows to return per page
-    ///
-    /// # Arguments
-    /// * `size` - The number of rows per page (must be positive)
     /// Set the number of rows to return per page
     ///
     /// # Arguments
@@ -325,18 +131,14 @@ impl RowRequestBuilder {
         self
     }
 
-    pub fn with_table(self, table: BaserowTable) -> Self {
-        Self {
-            table: Some(table),
-            ..self
-        }
+    pub fn with_table(mut self, table: BaserowTable) -> Self {
+        self.table = Some(table);
+        self
     }
 
-    pub fn with_baserow(self, baserow: Baserow) -> Self {
-        Self {
-            baserow: Some(baserow),
-            ..self
-        }
+    pub fn with_baserow(mut self, baserow: Baserow) -> Self {
+        self.baserow = Some(baserow);
+        self
     }
 
     /// Add sorting criteria to the query
@@ -394,29 +196,6 @@ impl RowRequestBuilder {
 ///
 /// This trait provides the core CRUD operations for working with Baserow tables.
 /// All operations are async and return Results to handle potential errors.
-///
-/// # Example
-/// ```no_run
-/// use baserow_rs::{ConfigBuilder, Baserow, BaserowTableOperations, api::client::BaserowClient};
-/// use std::collections::HashMap;
-/// use serde_json::Value;
-///
-/// #[tokio::main]
-/// async fn main() {
-///     let config = ConfigBuilder::new()
-///         .base_url("https://api.baserow.io")
-///         .api_key("your-api-key")
-///         .build();
-///
-///     let baserow = Baserow::with_configuration(config);
-///     let table = baserow.table_by_id(1234);
-///
-///     // Create a new record
-///     let mut data = HashMap::new();
-///     data.insert("Name".to_string(), Value::String("Test".to_string()));
-///     let result = table.create_one(data, None).await.unwrap();
-/// }
-/// ```
 #[async_trait]
 pub trait BaserowTableOperations {
     /// Automatically maps the table fields to their corresponding types
@@ -430,27 +209,6 @@ pub trait BaserowTableOperations {
     /// This is the preferred method for building queries with filters, sorting,
     /// and pagination options. The builder provides a fluent interface for
     /// constructing queries.
-    ///
-    /// # Example
-    /// ```no_run
-    /// use baserow_rs::{ConfigBuilder, Baserow, BaserowTableOperations, OrderDirection, filter::Filter};
-    /// use baserow_rs::api::client::BaserowClient;
-    /// use std::collections::HashMap;
-    /// use serde_json::Value;
-    ///
-    /// #[tokio::main]
-    /// async fn main() {
-    ///     let baserow = Baserow::with_configuration(ConfigBuilder::new().build());
-    ///     let table = baserow.table_by_id(1234);
-    ///
-    ///     let results = table.query()
-    ///         .filter_by("Status", Filter::Equal, "Active")
-    ///         .order_by("Created", OrderDirection::Desc)
-    ///         .get::<HashMap<String, Value>>()
-    ///         .await
-    ///         .unwrap();
-    /// }
-    /// ```
     fn query(self) -> RowRequestBuilder;
 
     /// Execute a row request and return typed results
@@ -475,13 +233,6 @@ pub trait BaserowTableOperations {
     ///
     /// # Arguments
     /// * `data` - A map of field names to values representing the record to create
-    ///
-    /// # Returns
-    /// The created record including any auto-generated fields (like ID)
-    /// Creates a single record in the table with optional user-friendly field names
-    ///
-    /// # Arguments
-    /// * `data` - A map of field names to values representing the record to create
     /// * `user_field_names` - Whether to use user-friendly field names in the response
     ///
     /// # Returns
@@ -492,66 +243,22 @@ pub trait BaserowTableOperations {
         user_field_names: Option<bool>,
     ) -> Result<HashMap<String, Value>, Box<dyn Error>>;
 
-    /// Retrieves a single record from the table by ID with optional user-friendly field names
+    /// Retrieves a single record from the table by ID
     ///
     /// # Type Parameters
-    /// * `T` - The type to deserialize into. Defaults to HashMap<String, Value>.
-    ///         When using a custom type, the table must be mapped using `auto_map()` first.
+    /// * `T` - The type to deserialize into
     ///
     /// # Arguments
     /// * `id` - The unique identifier of the record to retrieve
+    /// * `user_field_names` - Whether to use user-friendly field names in the response
     ///
     /// # Returns
-    /// The requested record if found, either as a HashMap or deserialized into type T
-    ///
-    /// # Example
-    /// ```no_run
-    /// use baserow_rs::{ConfigBuilder, Baserow, BaserowTableOperations, api::client::BaserowClient};
-    /// use serde::Deserialize;
-    /// use std::collections::HashMap;
-    /// use serde_json::Value;
-    ///
-    /// #[derive(Deserialize)]
-    /// struct User {
-    ///     name: String,
-    ///     email: String,
-    /// }
-    ///
-    /// #[tokio::main]
-    /// async fn main() {
-    ///     let config = ConfigBuilder::new()
-    ///         .base_url("https://api.baserow.io")
-    ///         .api_key("your-api-key")
-    ///         .build();
-    ///
-    ///     let baserow = Baserow::with_configuration(config);
-    ///     let table = baserow.table_by_id(1234);
-    ///
-    ///     // Get as HashMap (default)
-    ///     let row: HashMap<String, Value> = table.clone().get_one(1, None).await.unwrap();
-    ///
-    ///     // Get as typed struct
-    ///     let user: User = table.auto_map()
-    ///         .await
-    ///         .unwrap()
-    ///         .get_one(1, None)
-    ///         .await
-    ///         .unwrap();
-    /// }
-    /// ```
+    /// The requested record if found
     async fn get_one<T>(self, id: u64, user_field_names: Option<bool>) -> Result<T, Box<dyn Error>>
     where
         T: DeserializeOwned + 'static;
 
     /// Updates a single record in the table
-    ///
-    /// # Arguments
-    /// * `id` - The unique identifier of the record to update
-    /// * `data` - A map of field names to new values
-    ///
-    /// # Returns
-    /// The updated record
-    /// Updates a single record in the table with optional user-friendly field names
     ///
     /// # Arguments
     /// * `id` - The unique identifier of the record to update
@@ -576,14 +283,6 @@ pub trait BaserowTableOperations {
 
 #[async_trait]
 impl BaserowTableOperations for BaserowTable {
-    /// Automatically maps the table fields to their corresponding types
-    ///
-    /// This method fetches the table schema and sets up field mappings for type conversion.
-    /// Call this before performing operations if you need type-safe field access.
-    ///
-    /// Note: This is mutually exclusive with user_field_names(). Once auto_map() is called,
-    /// the user_field_names setting will be ignored as field name mapping is handled by
-    /// the TableMapper.
     #[instrument(skip(self), fields(table_id = ?self.id), err)]
     async fn auto_map(mut self) -> Result<BaserowTable, Box<dyn Error>> {
         let id = self.id.ok_or("Table ID is missing")?;
@@ -726,24 +425,22 @@ impl BaserowTableOperations for BaserowTable {
             StatusCode::OK => {
                 let response: RowsResponse = resp.json().await?;
 
-                // Try direct deserialization first
-                let results_clone = response.results.clone();
-                let typed_results = match serde_json::from_value::<Vec<T>>(Value::Array(
-                    results_clone
+                let typed_results = if let Some(mapper) = &self.mapper {
+                    // When using auto_map, convert field IDs to names first
+                    response
+                        .results
                         .into_iter()
-                        .map(|m| Value::Object(serde_json::Map::from_iter(m.into_iter())))
-                        .collect(),
-                )) {
-                    Ok(results) => results,
-                    Err(_) => {
-                        // Fall back to mapper for custom types
-                        let mapper = self.mapper.clone().ok_or("Table mapper is missing. Call auto_map() first when using typed responses.")?;
+                        .map(|row| mapper.deserialize_row(row))
+                        .collect::<Result<Vec<T>, _>>()?
+                } else {
+                    // When not using auto_map, try direct deserialization
+                    serde_json::from_value::<Vec<T>>(Value::Array(
                         response
                             .results
                             .into_iter()
-                            .map(|row| mapper.deserialize_row(row))
-                            .collect::<Result<Vec<T>, _>>()?
-                    }
+                            .map(|m| Value::Object(serde_json::Map::from_iter(m.into_iter())))
+                            .collect(),
+                    ))?
                 };
 
                 Ok(TypedRowsResponse {
@@ -987,5 +684,300 @@ impl BaserowTableOperations for BaserowTable {
             StatusCode::OK => Ok(()),
             _ => Err(Box::new(resp.error_for_status().unwrap_err())),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        api::client::BaserowClient, filter::Filter, Baserow, BaserowTableOperations, ConfigBuilder,
+        OrderDirection,
+    };
+    use serde::Deserialize;
+    use serde_json::Value;
+    use std::collections::HashMap;
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct TestUser {
+        name: String,
+    }
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct ComplexRecord {
+        id: u64,
+        name: String,
+        email: String,
+        age: Option<i32>,
+        is_active: bool,
+        created_at: String,
+    }
+
+    #[tokio::test]
+    async fn test_collection_deserialization() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        // Mock the fields endpoint for auto_map
+        let fields_mock = server
+            .mock("GET", "/api/database/fields/table/1234/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(r#"[
+                {"id": 1, "table_id": 1234, "name": "id", "order": 0, "type": "number", "primary": true, "read_only": false},
+                {"id": 2, "table_id": 1234, "name": "name", "order": 1, "type": "text", "primary": false, "read_only": false},
+                {"id": 3, "table_id": 1234, "name": "email", "order": 2, "type": "text", "primary": false, "read_only": false},
+                {"id": 4, "table_id": 1234, "name": "age", "order": 3, "type": "number", "primary": false, "read_only": false},
+                {"id": 5, "table_id": 1234, "name": "is_active", "order": 4, "type": "boolean", "primary": false, "read_only": false},
+                {"id": 6, "table_id": 1234, "name": "created_at", "order": 5, "type": "text", "primary": false, "read_only": false}
+            ]"#)
+            .create();
+
+        // Mock the rows endpoint with multiple records
+        let rows_mock = server
+            .mock("GET", "/api/database/rows/table/1234/")
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(
+                r#"{
+                "count": 2,
+                "next": null,
+                "previous": null,
+                "results": [
+                    {
+                        "field_1": 101,
+                        "field_2": "John Doe",
+                        "field_3": "john@example.com",
+                        "field_4": 30,
+                        "field_5": true,
+                        "field_6": "2023-01-01T00:00:00Z"
+                    },
+                    {
+                        "field_1": 102,
+                        "field_2": "Jane Smith",
+                        "field_3": "jane@example.com",
+                        "field_4": null,
+                        "field_5": false,
+                        "field_6": "2023-01-02T00:00:00Z"
+                    }
+                ]
+            }"#,
+            )
+            .create();
+
+        let configuration = ConfigBuilder::new()
+            .base_url(&mock_url)
+            .api_key("test-token")
+            .build();
+        let baserow = Baserow::with_configuration(configuration);
+        let table = baserow.table_by_id(1234);
+
+        // Test deserialization of multiple records with complex types
+        let mapped_table = table.auto_map().await.unwrap();
+        let response = mapped_table.query().get::<ComplexRecord>().await.unwrap();
+
+        assert_eq!(response.count, Some(2));
+        assert_eq!(response.results.len(), 2);
+
+        // Verify first record
+        let record1 = &response.results[0];
+        assert_eq!(record1.id, 101);
+        assert_eq!(record1.name, "John Doe");
+        assert_eq!(record1.email, "john@example.com");
+        assert_eq!(record1.age, Some(30));
+        assert_eq!(record1.is_active, true);
+        assert_eq!(record1.created_at, "2023-01-01T00:00:00Z");
+
+        // Verify second record with null field
+        let record2 = &response.results[1];
+        assert_eq!(record2.id, 102);
+        assert_eq!(record2.name, "Jane Smith");
+        assert_eq!(record2.email, "jane@example.com");
+        assert_eq!(record2.age, None);
+        assert_eq!(record2.is_active, false);
+        assert_eq!(record2.created_at, "2023-01-02T00:00:00Z");
+
+        fields_mock.assert();
+        rows_mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_auto_map_and_user_field_names_exclusivity() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        // Mock the fields endpoint
+        let fields_mock = server
+            .mock("GET", "/api/database/fields/table/1234/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(r#"[{"id": 1, "table_id": 1234, "name": "Name", "order": 0, "type": "text", "primary": true, "read_only": false}]"#)
+            .create();
+
+        // Mock the rows endpoint
+        let rows_mock = server
+            .mock("GET", "/api/database/rows/table/1234/")
+            .match_query(mockito::Matcher::Any)
+            .expect_at_least(1)
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(
+                r#"{"count": 1, "next": null, "previous": null, "results": [{"field_1": "test"}]}"#,
+            )
+            .create();
+
+        let configuration = ConfigBuilder::new()
+            .base_url(&mock_url)
+            .api_key("test-token")
+            .build();
+        let baserow = Baserow::with_configuration(configuration);
+        let table = baserow.table_by_id(1234);
+
+        // First test: auto_map should take precedence over user_field_names
+        let mapped_table = table.clone().auto_map().await.unwrap();
+        let _query = mapped_table
+            .query()
+            .user_field_names(true) // This should be ignored since we have auto_map
+            .get::<HashMap<String, Value>>()
+            .await
+            .unwrap();
+
+        // Verify that user_field_names parameter was not included in the request
+        rows_mock.assert();
+        fields_mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_field_mapping_in_query_params() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        // Mock the fields endpoint
+        let fields_mock = server
+            .mock("GET", "/api/database/fields/table/1234/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(r#"[
+                {"id": 1, "table_id": 1234, "name": "name", "order": 0, "type": "text", "primary": true, "read_only": false},
+                {"id": 2, "table_id": 1234, "name": "age", "order": 1, "type": "number", "primary": false, "read_only": false}
+            ]"#)
+            .create();
+
+        // Mock the rows endpoint with field ID mapping
+        let rows_mock = server
+            .mock("GET", "/api/database/rows/table/1234/")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded(
+                    "order_by".into(),
+                    "field_1".into(), // Should use field_1 instead of "name"
+                ),
+                mockito::Matcher::UrlEncoded(
+                    "filter__field_2__equal".into(), // Should use field_2 instead of "age"
+                    "25".into(),
+                ),
+            ]))
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(r#"{"count": 1, "next": null, "previous": null, "results": [{"field_1": "John", "field_2": 25}]}"#)
+            .create();
+
+        let configuration = ConfigBuilder::new()
+            .base_url(&mock_url)
+            .api_key("test-token")
+            .build();
+        let baserow = Baserow::with_configuration(configuration);
+        let table = baserow.table_by_id(1234);
+
+        // Test that field names are properly mapped to IDs in query parameters
+        let mapped_table = table.auto_map().await.unwrap();
+        let _result = mapped_table
+            .query()
+            .order_by("name", OrderDirection::Asc)
+            .filter_by("age", Filter::Equal, "25")
+            .get::<HashMap<String, Value>>()
+            .await
+            .unwrap();
+
+        // Verify that the request was made with mapped field IDs
+        fields_mock.assert();
+        rows_mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_struct_deserialization_with_both_options() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        // Mock the fields endpoint for auto_map
+        let fields_mock = server
+            .mock("GET", "/api/database/fields/table/1234/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(r#"[{"id": 1, "table_id": 1234, "name": "name", "order": 0, "type": "text", "primary": true, "read_only": false}]"#)
+            .create();
+
+        // Mock the rows endpoint for auto_map test
+        let rows_mock_auto_map = server
+            .mock("GET", "/api/database/rows/table/1234/")
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(
+                r#"{"count": 1, "next": null, "previous": null, "results": [{"field_1": "John"}]}"#,
+            )
+            .create();
+
+        // Mock the rows endpoint for user_field_names test
+        let rows_mock_user_names = server
+            .mock("GET", "/api/database/rows/table/1234/")
+            .match_query(mockito::Matcher::AllOf(vec![mockito::Matcher::UrlEncoded(
+                "user_field_names".into(),
+                "true".into(),
+            )]))
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(
+                r#"{"count": 1, "next": null, "previous": null, "results": [{"name": "John"}]}"#,
+            )
+            .create();
+
+        let configuration = ConfigBuilder::new()
+            .base_url(&mock_url)
+            .api_key("test-token")
+            .build();
+        let baserow = Baserow::with_configuration(configuration);
+        let table = baserow.table_by_id(1234);
+
+        // Test auto_map deserialization
+        let mapped_table = table.clone().auto_map().await.unwrap();
+        let auto_map_result = mapped_table.query().get::<TestUser>().await.unwrap();
+
+        assert_eq!(
+            auto_map_result.results[0],
+            TestUser {
+                name: "John".to_string()
+            }
+        );
+
+        // Test user_field_names deserialization
+        let user_names_result = table
+            .query()
+            .user_field_names(true)
+            .get::<TestUser>()
+            .await
+            .unwrap();
+
+        assert_eq!(
+            user_names_result.results[0],
+            TestUser {
+                name: "John".to_string()
+            }
+        );
+
+        // Verify the mocks were called the expected number of times
+        fields_mock.assert();
+        rows_mock_auto_map.assert();
+        rows_mock_user_names.assert();
     }
 }
