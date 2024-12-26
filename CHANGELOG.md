@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/cedricziel/baserow-rs/compare/v1.0.0...v1.0.1) (2024-12-26)
+
+
+### Bug Fixes
+
+* make baserow Debug'able ([#32](https://github.com/cedricziel/baserow-rs/issues/32)) ([c2d2362](https://github.com/cedricziel/baserow-rs/commit/c2d2362a8545cb04d48cfcbc8fe5f54931d504ad))
+
 ## [1.0.0](https://github.com/cedricziel/baserow-rs/compare/v0.8.0...v1.0.0) (2024-12-25)
 
 
