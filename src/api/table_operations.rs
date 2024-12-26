@@ -133,6 +133,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_field_mapping_in_query_params() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        // Mock the fields endpoint
+        let fields_mock = server
+            .mock("GET", "/api/database/fields/table/1234/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(r#"[
+                {"id": 1, "table_id": 1234, "name": "name", "order": 0, "type": "text", "primary": true, "read_only": false},
+                {"id": 2, "table_id": 1234, "name": "age", "order": 1, "type": "number", "primary": false, "read_only": false}
+            ]"#)
+            .create();
+
+        // Mock the rows endpoint with field ID mapping
+        let rows_mock = server
+            .mock("GET", "/api/database/rows/table/1234/")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded(
+                    "order_by".into(),
+                    "field_1".into(), // Should use field_1 instead of "name"
+                ),
+                mockito::Matcher::UrlEncoded(
+                    "filter__field_2__equal".into(), // Should use field_2 instead of "age"
+                    "25".into(),
+                ),
+            ]))
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(r#"{"count": 1, "next": null, "previous": null, "results": [{"1": "John", "2": 25}]}"#)
+            .create();
+
+        let configuration = ConfigBuilder::new()
+            .base_url(&mock_url)
+            .api_key("test-token")
+            .build();
+        let baserow = Baserow::with_configuration(configuration);
+        let table = baserow.table_by_id(1234);
+
+        // Test that field names are properly mapped to IDs in query parameters
+        let mapped_table = table.auto_map().await.unwrap();
+        let _result = mapped_table
+            .query()
+            .order_by("name", OrderDirection::Asc)
+            .filter_by("age", Filter::Equal, "25")
+            .get::<HashMap<String, Value>>()
+            .await
+            .unwrap();
+
+        // Verify that the request was made with mapped field IDs
+        fields_mock.assert();
+        rows_mock.assert();
+    }
+
+    #[tokio::test]
     async fn test_struct_deserialization_with_both_options() {
         let mut server = mockito::Server::new_async().await;
         let mock_url = server.url();
@@ -607,13 +663,24 @@ impl BaserowTableOperations for BaserowTable {
         if let Some(order) = request.order {
             let mut order_str = String::new();
             for (field, direction) in order {
+                // Map field name to ID if auto_map is enabled
+                let field_key = if let Some(mapper) = &self.mapper {
+                    if let Some(field_id) = mapper.get_field_id(&field) {
+                        format!("field_{}", field_id)
+                    } else {
+                        field
+                    }
+                } else {
+                    field
+                };
+
                 order_str.push_str(&format!(
                     "{}{}",
                     match direction {
                         OrderDirection::Asc => "",
                         OrderDirection::Desc => "-",
                     },
-                    field
+                    field_key
                 ));
             }
 
@@ -622,8 +689,19 @@ impl BaserowTableOperations for BaserowTable {
 
         if let Some(filter) = request.filter {
             for triple in filter {
+                // Map field name to ID if auto_map is enabled
+                let field_key = if let Some(mapper) = &self.mapper {
+                    if let Some(field_id) = mapper.get_field_id(&triple.field) {
+                        format!("field_{}", field_id)
+                    } else {
+                        triple.field
+                    }
+                } else {
+                    triple.field
+                };
+
                 req = req.query(&[(
-                    &format!("filter__{}__{}", triple.field, triple.filter.as_str()),
+                    &format!("filter__{}__{}", field_key, triple.filter.as_str()),
                     triple.value,
                 )]);
             }
