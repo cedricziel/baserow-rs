@@ -131,6 +131,59 @@ let result = baserow.upload_file(file, "filename.png".to_string()).await?;
 let result = baserow.upload_file_via_url("https://example.com/image.png").await?;
 ```
 
+## Tracing and Logging
+
+The library includes comprehensive tracing support using the `tracing` crate, providing detailed insights into API operations, requests, and errors. All operations are instrumented with spans and events, making it easy to debug and monitor your application's interaction with Baserow.
+
+### Enabling Tracing
+
+To enable tracing in your application:
+
+```rust
+use tracing::{info, Level};
+use tracing_subscriber::{fmt, EnvFilter};
+
+// Initialize tracing subscriber with default settings
+tracing_subscriber::fmt()
+    .with_env_filter(EnvFilter::from_default_env().add_directive(Level::INFO.into()))
+    .with_file(true)
+    .with_line_number(true)
+    .init();
+```
+
+### What Gets Logged
+
+The library logs the following information:
+- HTTP request details (method, URL)
+- Request/response status
+- Operation context (table IDs, record counts)
+- Detailed error information with context
+- Field mapping operations
+- Query construction details
+
+Example log output:
+```
+INFO  [examples/tracing.rs:15] Initializing Baserow client
+INFO  [examples/tracing.rs:29] Creating new record
+INFO  [examples/tracing.rs:32] record_id=1234 Record created successfully
+INFO  [examples/tracing.rs:41] Querying records
+INFO  [examples/tracing.rs:47] record_count=1 Successfully retrieved records
+```
+
+You can control the log level using environment variables:
+```bash
+# Show info and above
+RUST_LOG=info cargo run --example tracing
+
+# Show debug and above
+RUST_LOG=debug cargo run --example tracing
+
+# Show trace level for baserow_rs, info for everything else
+RUST_LOG=baserow_rs=trace,info cargo run --example tracing
+```
+
+See the [tracing example](examples/tracing.rs) for a complete demonstration of tracing capabilities.
+
 ## License
 
 Apache 2.0

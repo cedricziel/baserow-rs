@@ -1,17 +1,40 @@
+use tracing::{error, warn};
+
 /// Errors that can occur during Baserow authentication
 ///
 /// These errors represent various authentication failures that may occur
 /// when trying to authenticate with a Baserow instance.
+///
+/// Each variant includes tracing to provide detailed context about the error.
 #[derive(thiserror::Error, Debug)]
 pub enum BaserowAuthenticationError {
-    #[error("Invalid credentials")]
+    #[error("Authentication failed: Invalid credentials provided")]
     InvalidCredentials,
-    #[error("User is not active")]
+    #[error("Authentication failed: User account is deactivated")]
     DeactivatedUser,
-    #[error("Auth provider is disabled")]
+    #[error("Authentication failed: Authentication provider is disabled")]
     AuthProviderDisabled,
-    #[error("Email verification is required")]
+    #[error("Authentication failed: Email verification is required")]
     EmailVerificationRequired,
+}
+
+impl BaserowAuthenticationError {
+    pub(crate) fn log(&self) {
+        match self {
+            Self::InvalidCredentials => {
+                warn!(error = %self, "Authentication attempt failed due to invalid credentials");
+            }
+            Self::DeactivatedUser => {
+                warn!(error = %self, "Authentication attempt failed due to deactivated user account");
+            }
+            Self::AuthProviderDisabled => {
+                error!(error = %self, "Authentication attempt failed due to disabled auth provider");
+            }
+            Self::EmailVerificationRequired => {
+                warn!(error = %self, "Authentication requires email verification");
+            }
+        }
+    }
 }
 
 /// Errors that can occur during token-based authentication
@@ -43,12 +66,28 @@ pub enum BaserowAuthenticationError {
 /// ```
 #[derive(Debug, thiserror::Error)]
 pub enum TokenAuthError {
-    #[error("Missing {0} credentials")]
+    #[error("Authentication failed: Missing required {0} credentials")]
     MissingCredentials(&'static str),
-    #[error("Authentication failed: {0}")]
+    #[error("Token authentication failed: {0}")]
     AuthenticationFailed(String),
-    #[error("Network error: {0}")]
+    #[error("Network error during authentication: {0}")]
     NetworkError(#[from] reqwest::Error),
+}
+
+impl TokenAuthError {
+    pub(crate) fn log(&self) {
+        match self {
+            Self::MissingCredentials(field) => {
+                warn!(error = %self, field = %field, "Token authentication failed due to missing credentials");
+            }
+            Self::AuthenticationFailed(msg) => {
+                error!(error = %self, details = %msg, "Token authentication failed");
+            }
+            Self::NetworkError(e) => {
+                error!(error = %self, network_error = %e, "Token authentication failed due to network error");
+            }
+        }
+    }
 }
 
 /// Errors that can occur during file uploads
@@ -82,14 +121,36 @@ pub enum TokenAuthError {
 /// ```
 #[derive(Debug, thiserror::Error)]
 pub enum FileUploadError {
-    #[error("File read error: {0}")]
+    #[error("File upload failed: Unable to read file - {0}")]
     FileReadError(#[from] std::io::Error),
-    #[error("Upload failed: {0}")]
+    #[error("File upload failed: Network error - {0}")]
     UploadError(#[from] reqwest::Error),
-    #[error("Invalid content type")]
+    #[error("File upload failed: Invalid content type provided")]
     InvalidContentType,
-    #[error("Unexpected status code: {0}")]
+    #[error("File upload failed: Server responded with unexpected status code {0}")]
     UnexpectedStatusCode(reqwest::StatusCode),
-    #[error("Invalid URL {0}")]
+    #[error("File upload failed: Invalid URL provided - {0}")]
     InvalidURL(String),
+}
+
+impl FileUploadError {
+    pub(crate) fn log(&self) {
+        match self {
+            Self::FileReadError(e) => {
+                error!(error = %self, io_error = %e, "File upload failed due to file read error");
+            }
+            Self::UploadError(e) => {
+                error!(error = %self, network_error = %e, "File upload failed due to network error");
+            }
+            Self::InvalidContentType => {
+                warn!(error = %self, "File upload failed due to invalid content type");
+            }
+            Self::UnexpectedStatusCode(status) => {
+                error!(error = %self, status_code = %status, "File upload failed with unexpected status code");
+            }
+            Self::InvalidURL(url) => {
+                warn!(error = %self, url = %url, "File upload failed due to invalid URL");
+            }
+        }
+    }
 }

@@ -34,6 +34,9 @@
 
 use std::{error::Error, fs::File};
 
+use tracing::{debug, error, info, instrument, span, Level};
+use tracing_futures::Instrument;
+
 use api::{
     authentication::{LoginRequest, TokenResponse, User},
     client::BaserowClient,
@@ -156,6 +159,12 @@ pub struct Baserow {
 
 impl Baserow {
     pub fn with_configuration(configuration: Configuration) -> Self {
+        let span = span!(Level::INFO, "baserow_init");
+        let _enter = span.enter();
+
+        info!("Initializing Baserow client with configuration");
+        debug!(?configuration, "Configuration details");
+
         Self {
             configuration,
             client: Client::new(),
@@ -213,6 +222,7 @@ impl BaserowClient for Baserow {
         self.client.clone()
     }
 
+    #[instrument(skip(self), err)]
     async fn token_auth(&self) -> Result<Box<dyn BaserowClient>, TokenAuthError> {
         let url = format!("{}/api/user/token-auth/", &self.configuration.base_url);
 
@@ -235,10 +245,12 @@ impl BaserowClient for Baserow {
 
         let req = Client::new().post(url).json(&auth_request);
 
+        debug!("Sending token authentication request");
         let resp = req.send().await?;
 
         match resp.status() {
             StatusCode::OK => {
+                info!("Token authentication successful");
                 let token_response: TokenResponse = resp.json().await?;
                 let client = self
                     .clone()
@@ -248,10 +260,15 @@ impl BaserowClient for Baserow {
                     .with_user(token_response.user);
                 Ok(Box::new(client) as Box<dyn BaserowClient>)
             }
-            _ => Err(TokenAuthError::AuthenticationFailed(resp.text().await?)),
+            status => {
+                let error_text = resp.text().await?;
+                error!(%status, error = %error_text, "Token authentication failed");
+                Err(TokenAuthError::AuthenticationFailed(error_text))
+            }
         }
     }
 
+    #[instrument(skip(self), err)]
     async fn table_fields(&self, table_id: u64) -> Result<Vec<TableField>, Box<dyn Error>> {
         let url = format!(
             "{}/api/database/fields/table/{}/",
@@ -268,14 +285,18 @@ impl BaserowClient for Baserow {
             return Err("No authentication token provided".into());
         }
 
+        debug!("Sending request to fetch table fields");
         let resp = req.send().await?;
         match resp.status() {
             StatusCode::OK => {
                 let fields: Vec<TableField> = resp.json().await?;
+                info!(field_count = fields.len(), "Successfully retrieved table fields");
+                debug!(?fields, "Retrieved field details");
                 Ok(fields)
             }
             status => {
                 let error_text = resp.text().await?;
+                error!(%status, error = %error_text, "Failed to retrieve table fields");
                 Err(format!(
                     "Failed to retrieve table fields (status: {}): {}",
                     status, error_text
@@ -291,6 +312,7 @@ impl BaserowClient for Baserow {
             .with_baserow(self.clone())
     }
 
+    #[instrument(skip(self, file), fields(filename = %filename), err)]
     async fn upload_file(
         &self,
         file: File,
@@ -327,14 +349,23 @@ impl BaserowClient for Baserow {
             Ok(resp) => match resp.status() {
                 StatusCode::OK => {
                     let json: api::file::File = resp.json().await?;
+                    info!("File upload successful");
+                    debug!(?json, "Upload response details");
                     Ok(json)
                 }
-                _ => Err(FileUploadError::UnexpectedStatusCode(resp.status())),
+                status => {
+                    error!(%status, "File upload failed with unexpected status code");
+                    Err(FileUploadError::UnexpectedStatusCode(status))
+                }
             },
-            Err(e) => Err(FileUploadError::UploadError(e)),
+            Err(e) => {
+                error!(error = %e, "File upload request failed");
+                Err(FileUploadError::UploadError(e))
+            }
         }
     }
 
+    #[instrument(skip(self), err)]
     async fn upload_file_via_url(&self, url: &str) -> Result<api::file::File, FileUploadError> {
         // Validate URL format and scheme
         let file_url = url
@@ -365,11 +396,19 @@ impl BaserowClient for Baserow {
             Ok(resp) => match resp.status() {
                 StatusCode::OK => {
                     let json: api::file::File = resp.json().await?;
+                    info!("File upload via URL successful");
+                    debug!(?json, "Upload response details");
                     Ok(json)
                 }
-                _ => Err(FileUploadError::UnexpectedStatusCode(resp.status())),
+                status => {
+                    error!(%status, "File upload via URL failed with unexpected status code");
+                    Err(FileUploadError::UnexpectedStatusCode(status))
+                }
             },
-            Err(e) => Err(FileUploadError::UploadError(e)),
+            Err(e) => {
+                error!(error = %e, "File upload via URL request failed");
+                Err(FileUploadError::UploadError(e))
+            }
         }
     }
 }
