@@ -6,10 +6,10 @@ use crate::{
 };
 use async_trait::async_trait;
 use reqwest::{header::AUTHORIZATION, Client, StatusCode};
-use tracing::{debug, error, info, instrument, warn, Instrument, span, Level};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::HashMap, error::Error, vec};
+use tracing::{debug, error, info, instrument, span, warn, Instrument, Level};
 
 /// Response structure for table row queries
 ///
@@ -395,7 +395,10 @@ impl BaserowTableOperations for BaserowTable {
         let baserow = self.baserow.clone().ok_or("Baserow instance is missing")?;
         debug!("Fetching table fields for mapping");
         let fields = baserow.table_fields(id).await?;
-        info!(field_count = fields.len(), "Successfully mapped table fields");
+        info!(
+            field_count = fields.len(),
+            "Successfully mapped table fields"
+        );
 
         let mut mapper = TableMapper::new();
         mapper.map_fields(fields.clone());
@@ -575,7 +578,10 @@ impl BaserowTableOperations for BaserowTable {
         }
 
         debug!("Creating new record");
-        let resp = baserow.client.execute(req.json(&request_data).build()?).await?;
+        let resp = baserow
+            .client
+            .execute(req.json(&request_data).build()?)
+            .await?;
 
         match resp.status() {
             StatusCode::OK => {
@@ -695,7 +701,10 @@ impl BaserowTableOperations for BaserowTable {
         }
 
         debug!("Updating record");
-        let resp = baserow.client.execute(req.json(&request_data).build()?).await?;
+        let resp = baserow
+            .client
+            .execute(req.json(&request_data).build()?)
+            .await?;
 
         match resp.status() {
             StatusCode::OK => {

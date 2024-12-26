@@ -1,12 +1,13 @@
 use serde::{Deserialize, Serialize};
+use tracing::{debug, instrument};
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct LoginRequest {
     pub email: String,
     pub password: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct TokenResponse {
     pub access_token: String,
     pub refresh_token: String,
@@ -21,7 +22,7 @@ pub struct User {
     pub language: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct TokenAuthErrorResponse {
     pub error: String,
 }
