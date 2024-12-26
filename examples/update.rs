@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     record.insert("field_1529".to_string(), Value::String("test".to_string()));
 
     // retrieve a table by id
-    let row = baserow.table_by_id(176).create_one(record).await?;
+    let row = baserow.table_by_id(176).create_one(record, None).await?;
 
     println!("Row created: {:#?}", row);
 
@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let updated_record = baserow
         .table_by_id(176)
-        .update(row_id, updated_record)
+        .update(row_id, updated_record, None)
         .await?;
 
     println!("Updated row: {:#?}", updated_record);

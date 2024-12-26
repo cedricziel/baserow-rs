@@ -206,7 +206,7 @@ impl RowRequestBuilder {
 ///     // Create a new record
 ///     let mut data = HashMap::new();
 ///     data.insert("Name".to_string(), Value::String("Test".to_string()));
-///     let result = table.create_one(data).await.unwrap();
+///     let result = table.create_one(data, None).await.unwrap();
 /// }
 /// ```
 #[async_trait]
@@ -273,12 +273,21 @@ pub trait BaserowTableOperations {
     ///
     /// # Returns
     /// The created record including any auto-generated fields (like ID)
+    /// Creates a single record in the table with optional user-friendly field names
+    ///
+    /// # Arguments
+    /// * `data` - A map of field names to values representing the record to create
+    /// * `user_field_names` - Whether to use user-friendly field names in the response
+    ///
+    /// # Returns
+    /// The created record including any auto-generated fields (like ID)
     async fn create_one(
         self,
         data: HashMap<String, Value>,
+        user_field_names: Option<bool>,
     ) -> Result<HashMap<String, Value>, Box<dyn Error>>;
 
-    /// Retrieves a single record from the table by ID
+    /// Retrieves a single record from the table by ID with optional user-friendly field names
     ///
     /// # Type Parameters
     /// * `T` - The type to deserialize into. Defaults to HashMap<String, Value>.
@@ -314,18 +323,18 @@ pub trait BaserowTableOperations {
     ///     let table = baserow.table_by_id(1234);
     ///
     ///     // Get as HashMap (default)
-    ///     let row: HashMap<String, Value> = table.clone().get_one(1).await.unwrap();
+    ///     let row: HashMap<String, Value> = table.clone().get_one(1, None).await.unwrap();
     ///
     ///     // Get as typed struct
     ///     let user: User = table.auto_map()
     ///         .await
     ///         .unwrap()
-    ///         .get_one(1)
+    ///         .get_one(1, None)
     ///         .await
     ///         .unwrap();
     /// }
     /// ```
-    async fn get_one<T>(self, id: u64) -> Result<T, Box<dyn Error>>
+    async fn get_one<T>(self, id: u64, user_field_names: Option<bool>) -> Result<T, Box<dyn Error>>
     where
         T: DeserializeOwned + 'static;
 
@@ -337,10 +346,20 @@ pub trait BaserowTableOperations {
     ///
     /// # Returns
     /// The updated record
+    /// Updates a single record in the table with optional user-friendly field names
+    ///
+    /// # Arguments
+    /// * `id` - The unique identifier of the record to update
+    /// * `data` - A map of field names to new values
+    /// * `user_field_names` - Whether to use user-friendly field names in the response
+    ///
+    /// # Returns
+    /// The updated record
     async fn update(
         self,
         id: u64,
         data: HashMap<String, Value>,
+        user_field_names: Option<bool>,
     ) -> Result<HashMap<String, Value>, Box<dyn Error>>;
 
     /// Deletes a single record from the table
@@ -484,6 +503,7 @@ impl BaserowTableOperations for BaserowTable {
     async fn create_one(
         self,
         data: HashMap<String, Value>,
+        user_field_names: Option<bool>,
     ) -> Result<HashMap<String, Value>, Box<dyn Error>> {
         let baserow = self.baserow.expect("Baserow instance is missing");
 
@@ -494,6 +514,10 @@ impl BaserowTableOperations for BaserowTable {
         );
 
         let mut req = baserow.client.post(url);
+
+        if let Some(use_names) = user_field_names {
+            req = req.query(&[("user_field_names", use_names.to_string())]);
+        }
 
         if baserow.configuration.jwt.is_some() {
             req = req.header(
@@ -515,7 +539,11 @@ impl BaserowTableOperations for BaserowTable {
         }
     }
 
-    async fn get_one<T>(mut self, id: u64) -> Result<T, Box<dyn Error>>
+    async fn get_one<T>(
+        mut self,
+        id: u64,
+        user_field_names: Option<bool>,
+    ) -> Result<T, Box<dyn Error>>
     where
         T: DeserializeOwned + 'static,
     {
@@ -529,6 +557,10 @@ impl BaserowTableOperations for BaserowTable {
         );
 
         let mut req = baserow.client.get(url);
+
+        if let Some(use_names) = user_field_names {
+            req = req.query(&[("user_field_names", use_names.to_string())]);
+        }
 
         if baserow.configuration.jwt.is_some() {
             req = req.header(
@@ -565,6 +597,7 @@ impl BaserowTableOperations for BaserowTable {
         self,
         id: u64,
         data: HashMap<String, Value>,
+        user_field_names: Option<bool>,
     ) -> Result<HashMap<String, Value>, Box<dyn Error>> {
         let baserow = self.baserow.expect("Baserow instance is missing");
 
@@ -576,6 +609,10 @@ impl BaserowTableOperations for BaserowTable {
         );
 
         let mut req = baserow.client.patch(url);
+
+        if let Some(use_names) = user_field_names {
+            req = req.query(&[("user_field_names", use_names.to_string())]);
+        }
 
         if baserow.configuration.jwt.is_some() {
             req = req.header(

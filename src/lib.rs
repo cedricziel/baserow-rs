@@ -27,7 +27,7 @@
 //!     let mut data = HashMap::new();
 //!     data.insert("Name".to_string(), Value::String("Test".to_string()));
 //!
-//!     let result = table.create_one(data).await.unwrap();
+//!     let result = table.create_one(data, None).await.unwrap();
 //!     println!("Created record: {:?}", result);
 //! }
 //! ```
@@ -481,7 +481,7 @@ mod tests {
         let mut record = HashMap::new();
         record.insert("field_1".to_string(), Value::String("test".to_string()));
 
-        let result = table.create_one(record).await;
+        let result = table.create_one(record, None).await;
         assert!(result.is_ok());
 
         let created_record = result.unwrap();
@@ -516,7 +516,8 @@ mod tests {
         let baserow = Baserow::with_configuration(configuration);
         let table = baserow.table_by_id(1234);
 
-        let result: Result<HashMap<String, Value>, Box<dyn Error>> = table.get_one(5678).await;
+        let result: Result<HashMap<String, Value>, Box<dyn Error>> =
+            table.get_one(5678, None).await;
         assert!(result.is_ok());
 
         let record = result.unwrap();
@@ -555,7 +556,7 @@ mod tests {
         let mut record = HashMap::new();
         record.insert("field_1".to_string(), Value::String("updated".to_string()));
 
-        let result = table.update(5678, record).await;
+        let result = table.update(5678, record, None).await;
         assert!(result.is_ok());
 
         let updated_record = result.unwrap();
