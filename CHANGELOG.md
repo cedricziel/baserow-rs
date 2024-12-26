@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.3](https://github.com/cedricziel/baserow-rs/compare/v2.0.2...v2.0.3) (2024-12-26)
+
+
+### Bug Fixes
+
+* test deserialization ([#53](https://github.com/cedricziel/baserow-rs/issues/53)) ([c6b4a57](https://github.com/cedricziel/baserow-rs/commit/c6b4a5700c24377cc9034203273652d9ad06aeb9))
+
 ## [2.0.2](https://github.com/cedricziel/baserow-rs/compare/v2.0.1...v2.0.2) (2024-12-26)
 
 
