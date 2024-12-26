@@ -75,6 +75,141 @@ impl Default for RowRequest {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ConfigBuilder;
+    use std::collections::HashMap;
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct TestUser {
+        name: String,
+    }
+
+    #[tokio::test]
+    async fn test_auto_map_and_user_field_names_exclusivity() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        // Mock the fields endpoint
+        let fields_mock = server
+            .mock("GET", "/api/database/fields/table/1234/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(r#"[{"id": 1, "table_id": 1234, "name": "Name", "order": 0, "type": "text", "primary": true, "read_only": false}]"#)
+            .create();
+
+        // Mock the rows endpoint
+        let rows_mock = server
+            .mock("GET", "/api/database/rows/table/1234/")
+            .match_query(mockito::Matcher::Any)
+            .expect_at_least(1)
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(
+                r#"{"count": 1, "next": null, "previous": null, "results": [{"field_1": "test"}]}"#,
+            )
+            .create();
+
+        let configuration = ConfigBuilder::new()
+            .base_url(&mock_url)
+            .api_key("test-token")
+            .build();
+        let baserow = Baserow::with_configuration(configuration);
+        let table = baserow.table_by_id(1234);
+
+        // First test: auto_map should take precedence over user_field_names
+        let mapped_table = table.clone().auto_map().await.unwrap();
+        let query = mapped_table
+            .query()
+            .user_field_names(true) // This should be ignored since we have auto_map
+            .get::<HashMap<String, Value>>()
+            .await
+            .unwrap();
+
+        // Verify that user_field_names parameter was not included in the request
+        rows_mock.assert();
+        fields_mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_struct_deserialization_with_both_options() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        // Mock the fields endpoint for auto_map
+        let fields_mock = server
+            .mock("GET", "/api/database/fields/table/1234/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(r#"[{"id": 1, "table_id": 1234, "name": "name", "order": 0, "type": "text", "primary": true, "read_only": false}]"#)
+            .create();
+
+        // Mock the rows endpoint for auto_map test
+        let rows_mock_auto_map = server
+            .mock("GET", "/api/database/rows/table/1234/")
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(
+                r#"{"count": 1, "next": null, "previous": null, "results": [{"1": "John"}]}"#,
+            )
+            .create();
+
+        // Mock the rows endpoint for user_field_names test
+        let rows_mock_user_names = server
+            .mock("GET", "/api/database/rows/table/1234/")
+            .match_query(mockito::Matcher::AllOf(vec![mockito::Matcher::UrlEncoded(
+                "user_field_names".into(),
+                "true".into(),
+            )]))
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(
+                r#"{"count": 1, "next": null, "previous": null, "results": [{"name": "John"}]}"#,
+            )
+            .create();
+
+        let configuration = ConfigBuilder::new()
+            .base_url(&mock_url)
+            .api_key("test-token")
+            .build();
+        let baserow = Baserow::with_configuration(configuration);
+        let table = baserow.table_by_id(1234);
+
+        // Test auto_map deserialization
+        let mapped_table = table.clone().auto_map().await.unwrap();
+        let auto_map_result = mapped_table.query().get::<TestUser>().await.unwrap();
+
+        assert_eq!(
+            auto_map_result.results[0],
+            TestUser {
+                name: "John".to_string()
+            }
+        );
+
+        // Test user_field_names deserialization
+        let user_names_result = table
+            .query()
+            .user_field_names(true)
+            .get::<TestUser>()
+            .await
+            .unwrap();
+
+        assert_eq!(
+            user_names_result.results[0],
+            TestUser {
+                name: "John".to_string()
+            }
+        );
+
+        // Verify the mocks were called the expected number of times
+        fields_mock.assert();
+        rows_mock_auto_map.assert();
+        rows_mock_user_names.assert();
+    }
+}
+
 /// Builder for constructing table row queries
 ///
 /// Provides a fluent interface for building queries with filtering, sorting,
@@ -123,8 +258,14 @@ impl RowRequestBuilder {
     }
 
     /// Set whether to use user-friendly field names in the response
+    ///
+    /// Note: This option is mutually exclusive with auto_map(). If auto_map() has been called,
+    /// this setting will be ignored as field name mapping is handled by the TableMapper.
     pub fn user_field_names(mut self, enabled: bool) -> Self {
-        self.request.user_field_names = Some(enabled);
+        // Only set user_field_names if we don't have a mapper
+        if self.table.as_ref().map_or(true, |t| t.mapper.is_none()) {
+            self.request.user_field_names = Some(enabled);
+        }
         self
     }
 
@@ -379,6 +520,14 @@ pub trait BaserowTableOperations {
 
 #[async_trait]
 impl BaserowTableOperations for BaserowTable {
+    /// Automatically maps the table fields to their corresponding types
+    ///
+    /// This method fetches the table schema and sets up field mappings for type conversion.
+    /// Call this before performing operations if you need type-safe field access.
+    ///
+    /// Note: This is mutually exclusive with user_field_names(). Once auto_map() is called,
+    /// the user_field_names setting will be ignored as field name mapping is handled by
+    /// the TableMapper.
     #[instrument(skip(self), fields(table_id = ?self.id), err)]
     async fn auto_map(mut self) -> Result<BaserowTable, Box<dyn Error>> {
         let id = self.id.ok_or("Table ID is missing")?;
