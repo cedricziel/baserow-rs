@@ -861,7 +861,7 @@ mod tests {
             .match_query(mockito::Matcher::AllOf(vec![
                 mockito::Matcher::UrlEncoded("view_id".into(), "5678".into()),
                 mockito::Matcher::UrlEncoded("size".into(), "2".into()),
-                mockito::Matcher::UrlEncoded("offset".into(), "1".into()),
+                mockito::Matcher::UrlEncoded("page".into(), "1".into()),
             ]))
             .with_status(200)
             .with_header("Content-Type", "application/json")
@@ -886,7 +886,7 @@ mod tests {
             .query()
             .view(5678)
             .page_size(2)
-            .offset(1)
+            .page(1)
             .get::<HashMap<String, Value>>()
             .await;
 
