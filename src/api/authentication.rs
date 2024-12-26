@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use tracing::{debug, instrument};
 
 #[derive(Serialize, Debug)]
 pub struct LoginRequest {

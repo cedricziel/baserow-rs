@@ -21,7 +21,7 @@
 ///     let table = baserow.table_by_id(1234);
 ///
 ///     // Query with multiple filters
-///     let results = table.rows()
+///     let results = table.query()
 ///         .filter_by("Status", Filter::Equal, "Active")
 ///         .filter_by("Age", Filter::HigherThan, "18")
 ///         .filter_by("Name", Filter::Contains, "John")

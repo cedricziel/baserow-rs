@@ -103,7 +103,10 @@ impl TableMapper {
             debug!(key = ?key, "Keeping original key");
             converted.insert(key, value);
         }
-        debug!(field_count = converted.len(), "Completed field name conversion");
+        debug!(
+            field_count = converted.len(),
+            "Completed field name conversion"
+        );
         converted
     }
 
@@ -127,7 +130,10 @@ impl TableMapper {
             debug!(key = ?key, "Keeping original key");
             converted.insert(key, value);
         }
-        debug!(field_count = converted.len(), "Completed field ID conversion");
+        debug!(
+            field_count = converted.len(),
+            "Completed field ID conversion"
+        );
         converted
     }
 }

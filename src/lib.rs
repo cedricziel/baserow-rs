@@ -35,7 +35,6 @@
 use std::{error::Error, fs::File};
 
 use tracing::{debug, error, info, instrument, span, Level};
-use tracing_futures::Instrument;
 
 use api::{
     authentication::{LoginRequest, TokenResponse, User},
@@ -260,7 +259,7 @@ impl BaserowClient for Baserow {
                     .with_user(token_response.user);
                 Ok(Box::new(client) as Box<dyn BaserowClient>)
             }
-            status => {
+            _status => {
                 let error_text = resp.text().await?;
                 let error = TokenAuthError::AuthenticationFailed(error_text);
                 error.log();
@@ -360,9 +359,9 @@ impl BaserowClient for Baserow {
                     Ok(json)
                 }
                 status => {
-                let error = FileUploadError::UnexpectedStatusCode(status);
-                error.log();
-                Err(error)
+                    let error = FileUploadError::UnexpectedStatusCode(status);
+                    error.log();
+                    Err(error)
                 }
             },
             Err(e) => {
@@ -409,9 +408,9 @@ impl BaserowClient for Baserow {
                     Ok(json)
                 }
                 status => {
-                let error = FileUploadError::UnexpectedStatusCode(status);
-                error.log();
-                Err(error)
+                    let error = FileUploadError::UnexpectedStatusCode(status);
+                    error.log();
+                    Err(error)
                 }
             },
             Err(e) => {
@@ -934,7 +933,7 @@ mod tests {
         let result = table
             .query()
             .view(5678)
-            .page_size(2)
+            .size(2)
             .page(1)
             .get::<HashMap<String, Value>>()
             .await;

@@ -1,42 +1,5 @@
 use tracing::{error, warn};
 
-/// Errors that can occur during Baserow authentication
-///
-/// These errors represent various authentication failures that may occur
-/// when trying to authenticate with a Baserow instance.
-///
-/// Each variant includes tracing to provide detailed context about the error.
-#[derive(thiserror::Error, Debug)]
-pub enum BaserowAuthenticationError {
-    #[error("Authentication failed: Invalid credentials provided")]
-    InvalidCredentials,
-    #[error("Authentication failed: User account is deactivated")]
-    DeactivatedUser,
-    #[error("Authentication failed: Authentication provider is disabled")]
-    AuthProviderDisabled,
-    #[error("Authentication failed: Email verification is required")]
-    EmailVerificationRequired,
-}
-
-impl BaserowAuthenticationError {
-    pub(crate) fn log(&self) {
-        match self {
-            Self::InvalidCredentials => {
-                warn!(error = %self, "Authentication attempt failed due to invalid credentials");
-            }
-            Self::DeactivatedUser => {
-                warn!(error = %self, "Authentication attempt failed due to deactivated user account");
-            }
-            Self::AuthProviderDisabled => {
-                error!(error = %self, "Authentication attempt failed due to disabled auth provider");
-            }
-            Self::EmailVerificationRequired => {
-                warn!(error = %self, "Authentication requires email verification");
-            }
-        }
-    }
-}
-
 /// Errors that can occur during token-based authentication
 ///
 /// These errors represent failures that may occur when attempting to

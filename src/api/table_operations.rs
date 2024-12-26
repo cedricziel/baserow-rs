@@ -9,7 +9,7 @@ use reqwest::{header::AUTHORIZATION, Client, StatusCode};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::HashMap, error::Error, vec};
-use tracing::{debug, error, info, instrument, span, warn, Instrument, Level};
+use tracing::{debug, info, instrument};
 
 /// Response structure for table row queries
 ///
@@ -104,12 +104,6 @@ impl RowRequestBuilder {
     ///
     /// # Arguments
     /// * `size` - The number of rows per page (must be positive)
-    #[deprecated(since = "1.1.0", note = "Use `size` instead")]
-    pub fn page_size(mut self, size: i32) -> Self {
-        self.request.page_size = Some(size);
-        self
-    }
-
     /// Set the number of rows to return per page
     ///
     /// # Arguments
@@ -262,9 +256,6 @@ pub trait BaserowTableOperations {
     /// ```
     fn query(self) -> RowRequestBuilder;
 
-    #[deprecated(since = "0.1.0", note = "Use the query() method instead")]
-    fn rows(self) -> RowRequestBuilder;
-
     /// Execute a row request and return typed results
     ///
     /// # Type Parameters
@@ -413,10 +404,6 @@ impl BaserowTableOperations for BaserowTable {
             .with_table(self.clone())
     }
 
-    fn rows(self) -> RowRequestBuilder {
-        self.query()
-    }
-
     #[instrument(skip(self, baserow), fields(table_id = ?self.id), err)]
     async fn get<T>(
         &self,
@@ -453,12 +440,18 @@ impl BaserowTableOperations for BaserowTable {
         if baserow.configuration.jwt.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("JWT {}", &baserow.configuration.database_token.as_ref().unwrap()),
+                format!(
+                    "JWT {}",
+                    &baserow.configuration.database_token.as_ref().unwrap()
+                ),
             );
         } else if baserow.configuration.database_token.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.database_token.as_ref().unwrap()),
+                format!(
+                    "Token {}",
+                    &baserow.configuration.database_token.as_ref().unwrap()
+                ),
             );
         }
 
@@ -573,12 +566,17 @@ impl BaserowTableOperations for BaserowTable {
         } else if baserow.configuration.database_token.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.database_token.as_ref().unwrap()),
+                format!(
+                    "Token {}",
+                    &baserow.configuration.database_token.as_ref().unwrap()
+                ),
             );
         }
 
         debug!("Creating new record");
-        let resp = baserow.trace_request(&baserow.client, req.json(&request_data).build()?).await?;
+        let resp = baserow
+            .trace_request(&baserow.client, req.json(&request_data).build()?)
+            .await?;
 
         match resp.status() {
             StatusCode::OK => {
@@ -631,7 +629,10 @@ impl BaserowTableOperations for BaserowTable {
         } else if baserow.configuration.database_token.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.database_token.as_ref().unwrap()),
+                format!(
+                    "Token {}",
+                    &baserow.configuration.database_token.as_ref().unwrap()
+                ),
             );
         }
 
@@ -693,12 +694,17 @@ impl BaserowTableOperations for BaserowTable {
         } else if baserow.configuration.database_token.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.database_token.as_ref().unwrap()),
+                format!(
+                    "Token {}",
+                    &baserow.configuration.database_token.as_ref().unwrap()
+                ),
             );
         }
 
         debug!("Updating record");
-        let resp = baserow.trace_request(&baserow.client, req.json(&request_data).build()?).await?;
+        let resp = baserow
+            .trace_request(&baserow.client, req.json(&request_data).build()?)
+            .await?;
 
         match resp.status() {
             StatusCode::OK => {
@@ -740,7 +746,10 @@ impl BaserowTableOperations for BaserowTable {
         } else if baserow.configuration.database_token.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.database_token.as_ref().unwrap()),
+                format!(
+                    "Token {}",
+                    &baserow.configuration.database_token.as_ref().unwrap()
+                ),
             );
         }
 

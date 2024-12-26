@@ -28,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let response = table
         .clone()
         .query()
-        .page_size(10) // Get 10 rows per page
+        .size(10) // Get 10 rows per page
         .filter_by("age", Filter::HigherThan, "18") // Only users over 18
         .order_by("name", OrderDirection::Asc) // Sort by name
         .get::<User>()
@@ -49,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let next_page = table
             .clone()
             .query()
-            .page_size(10)
+            .size(10)
             .page(2) // Get second page
             .filter_by("age", Filter::HigherThan, "18")
             .order_by("name", OrderDirection::Asc)
