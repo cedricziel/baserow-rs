@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/cedricziel/baserow-rs/compare/v1.1.0...v1.1.1) (2024-12-26)
+
+
+### Bug Fixes
+
+* use page, not offset ([#36](https://github.com/cedricziel/baserow-rs/issues/36)) ([c23abf5](https://github.com/cedricziel/baserow-rs/commit/c23abf52317eec553fe308924e480cd0668cf74d))
+
 ## [1.1.0](https://github.com/cedricziel/baserow-rs/compare/v1.0.1...v1.1.0) (2024-12-26)
 
 
