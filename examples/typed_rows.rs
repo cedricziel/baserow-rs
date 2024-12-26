@@ -34,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .get::<User>()
         .await?;
 
-    println!("Found {} total users", response.count);
+    println!("Found {} total users", response.count.unwrap());
 
     // Process the typed results
     for user in response.results {
