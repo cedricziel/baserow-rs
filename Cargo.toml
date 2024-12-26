@@ -6,7 +6,6 @@ edition = "2021"
 categories = ["database"]
 license = "Apache-2.0"
 repository = "https://github.com/cedricziel/baserow-rs"
-issues = "https://github.com/cedricziel/baserow-rs/issues"
 
 [dependencies]
 tracing = { version = "0.1", features = ["attributes"] }
