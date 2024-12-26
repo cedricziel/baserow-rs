@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/cedricziel/baserow-rs/compare/v2.0.0...v2.0.1) (2024-12-26)
+
+
+### Bug Fixes
+
+* make mapper and user_field_names mutually exclusive ([#49](https://github.com/cedricziel/baserow-rs/issues/49)) ([d468634](https://github.com/cedricziel/baserow-rs/commit/d46863453114fb82a6686819aaf5d73f0e5b68d4))
+
 ## [2.0.0](https://github.com/cedricziel/baserow-rs/compare/v1.2.0...v2.0.0) (2024-12-26)
 
 
