@@ -74,7 +74,10 @@ impl TableMapper {
     where
         T: DeserializeOwned,
     {
-        serde_json::from_value(serde_json::to_value(row)?)
+        // First convert field IDs to names
+        let converted = self.convert_to_field_names(row);
+        // Then deserialize
+        serde_json::from_value(serde_json::to_value(converted)?)
     }
 
     /// Converts field IDs to field names in a row
@@ -88,17 +91,25 @@ impl TableMapper {
     pub fn convert_to_field_names(&self, row: HashMap<String, Value>) -> HashMap<String, Value> {
         let mut converted = HashMap::new();
         for (key, value) in row {
+            // Try to parse as a raw field ID first
+            if let Ok(field_id) = key.parse::<u64>() {
+                if let Some(name) = self.get_field_name(field_id) {
+                    debug!(field_id = field_id, field_name = ?name, "Converted raw field ID to name");
+                    converted.insert(name, value);
+                    continue;
+                }
+            }
+            // Then try with field_ prefix
             if let Some(field_id) = key
                 .strip_prefix("field_")
                 .and_then(|id| id.parse::<u64>().ok())
             {
                 if let Some(name) = self.get_field_name(field_id) {
-                    debug!(field_id = field_id, field_name = ?name, "Converted field ID to name");
+                    debug!(field_id = field_id, field_name = ?name, "Converted prefixed field ID to name");
                     converted.insert(name, value);
                     continue;
-                } else {
-                    warn!(field_id = field_id, "No name mapping found for field ID");
                 }
+                warn!(field_id = field_id, "No name mapping found for field ID");
             }
             debug!(key = ?key, "Keeping original key");
             converted.insert(key, value);

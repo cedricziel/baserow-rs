@@ -81,6 +81,11 @@ mod tests {
     use crate::ConfigBuilder;
     use std::collections::HashMap;
 
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct TestUser {
+        name: String,
+    }
+
     #[tokio::test]
     async fn test_auto_map_and_user_field_names_exclusivity() {
         let mut server = mockito::Server::new_async().await;
@@ -101,7 +106,9 @@ mod tests {
             .expect_at_least(1)
             .with_status(200)
             .with_header("Content-Type", "application/json")
-            .with_body(r#"{"count": 1, "next": null, "previous": null, "results": [{"field_1": "test"}]}"#)
+            .with_body(
+                r#"{"count": 1, "next": null, "previous": null, "results": [{"field_1": "test"}]}"#,
+            )
             .create();
 
         let configuration = ConfigBuilder::new()
@@ -123,6 +130,83 @@ mod tests {
         // Verify that user_field_names parameter was not included in the request
         rows_mock.assert();
         fields_mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_struct_deserialization_with_both_options() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        // Mock the fields endpoint for auto_map
+        let fields_mock = server
+            .mock("GET", "/api/database/fields/table/1234/")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(r#"[{"id": 1, "table_id": 1234, "name": "name", "order": 0, "type": "text", "primary": true, "read_only": false}]"#)
+            .create();
+
+        // Mock the rows endpoint for auto_map test
+        let rows_mock_auto_map = server
+            .mock("GET", "/api/database/rows/table/1234/")
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(
+                r#"{"count": 1, "next": null, "previous": null, "results": [{"1": "John"}]}"#,
+            )
+            .create();
+
+        // Mock the rows endpoint for user_field_names test
+        let rows_mock_user_names = server
+            .mock("GET", "/api/database/rows/table/1234/")
+            .match_query(mockito::Matcher::AllOf(vec![mockito::Matcher::UrlEncoded(
+                "user_field_names".into(),
+                "true".into(),
+            )]))
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(
+                r#"{"count": 1, "next": null, "previous": null, "results": [{"name": "John"}]}"#,
+            )
+            .create();
+
+        let configuration = ConfigBuilder::new()
+            .base_url(&mock_url)
+            .api_key("test-token")
+            .build();
+        let baserow = Baserow::with_configuration(configuration);
+        let table = baserow.table_by_id(1234);
+
+        // Test auto_map deserialization
+        let mapped_table = table.clone().auto_map().await.unwrap();
+        let auto_map_result = mapped_table.query().get::<TestUser>().await.unwrap();
+
+        assert_eq!(
+            auto_map_result.results[0],
+            TestUser {
+                name: "John".to_string()
+            }
+        );
+
+        // Test user_field_names deserialization
+        let user_names_result = table
+            .query()
+            .user_field_names(true)
+            .get::<TestUser>()
+            .await
+            .unwrap();
+
+        assert_eq!(
+            user_names_result.results[0],
+            TestUser {
+                name: "John".to_string()
+            }
+        );
+
+        // Verify the mocks were called the expected number of times
+        fields_mock.assert();
+        rows_mock_auto_map.assert();
+        rows_mock_user_names.assert();
     }
 }
 
@@ -459,7 +543,6 @@ impl BaserowTableOperations for BaserowTable {
         let mut mapper = TableMapper::new();
         mapper.map_fields(fields.clone());
         self.mapper = Some(mapper);
-
 
         Ok(self)
     }
