@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.0](https://github.com/cedricziel/baserow-rs/compare/v1.1.2...v1.2.0) (2024-12-26)
+
+
+### Features
+
+* add tracing ([#42](https://github.com/cedricziel/baserow-rs/issues/42)) ([e6c535f](https://github.com/cedricziel/baserow-rs/commit/e6c535f08e06195baf13b15290454a4b825173b5))
+
+
+### Bug Fixes
+
+* enforce correct type ([#40](https://github.com/cedricziel/baserow-rs/issues/40)) ([7923414](https://github.com/cedricziel/baserow-rs/commit/79234145f0e22f4acc1cd01c97d9cf0ee4ff8a1e))
+
 ## [1.1.2](https://github.com/cedricziel/baserow-rs/compare/v1.1.1...v1.1.2) (2024-12-26)
 
 
