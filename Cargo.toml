@@ -10,7 +10,6 @@ issues = "https://github.com/cedricziel/baserow-rs/issues"
 
 [dependencies]
 tracing = { version = "0.1", features = ["attributes"] }
-tracing-subscriber = { version = "0.3", features = ["env-filter", "time"] }
 tracing-futures = "0.2"
 async-trait = "0.1.77"
 reqwest = { version = "0.12.9", features = ["json", "multipart", "stream"] }
@@ -24,3 +23,4 @@ mime_guess = "2.0.5"
 [dev-dependencies]
 mockito = "1.6.0"
 tokio = { version = "1", features = ["macros", "rt"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

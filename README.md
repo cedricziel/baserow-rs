@@ -131,58 +131,34 @@ let result = baserow.upload_file(file, "filename.png".to_string()).await?;
 let result = baserow.upload_file_via_url("https://example.com/image.png").await?;
 ```
 
-## Tracing and Logging
+## Tracing Support
 
-The library includes comprehensive tracing support using the `tracing` crate, providing detailed insights into API operations, requests, and errors. All operations are instrumented with spans and events, making it easy to debug and monitor your application's interaction with Baserow.
+This library is instrumented with the `tracing` crate to provide detailed insights into API operations. All key operations emit spans and events that can help you understand and debug your application's interaction with Baserow.
 
-### Enabling Tracing
+### Instrumented Operations
 
-To enable tracing in your application:
+The following operations are instrumented with tracing:
+- HTTP requests and responses
+- Table operations (create, read, update, delete)
+- Authentication flows
+- Error paths with detailed context
+- Field mapping operations
+
+### Using Tracing in Your Application
+
+The library provides tracing instrumentation but does not configure any subscribers. This follows the best practice of letting applications control their logging configuration. To capture the tracing data in your application, configure a subscriber of your choice:
 
 ```rust
-use tracing::{info, Level};
+// Example using tracing-subscriber (add it to your application's dependencies)
 use tracing_subscriber::{fmt, EnvFilter};
 
-// Initialize tracing subscriber with default settings
+// Configure subscriber in your application's main function
 tracing_subscriber::fmt()
-    .with_env_filter(EnvFilter::from_default_env().add_directive(Level::INFO.into()))
-    .with_file(true)
-    .with_line_number(true)
+    .with_env_filter(EnvFilter::from_default_env())
     .init();
 ```
 
-### What Gets Logged
-
-The library logs the following information:
-- HTTP request details (method, URL)
-- Request/response status
-- Operation context (table IDs, record counts)
-- Detailed error information with context
-- Field mapping operations
-- Query construction details
-
-Example log output:
-```
-INFO  [examples/tracing.rs:15] Initializing Baserow client
-INFO  [examples/tracing.rs:29] Creating new record
-INFO  [examples/tracing.rs:32] record_id=1234 Record created successfully
-INFO  [examples/tracing.rs:41] Querying records
-INFO  [examples/tracing.rs:47] record_count=1 Successfully retrieved records
-```
-
-You can control the log level using environment variables:
-```bash
-# Show info and above
-RUST_LOG=info cargo run --example tracing
-
-# Show debug and above
-RUST_LOG=debug cargo run --example tracing
-
-# Show trace level for baserow_rs, info for everything else
-RUST_LOG=baserow_rs=trace,info cargo run --example tracing
-```
-
-See the [tracing example](examples/tracing.rs) for a complete demonstration of tracing capabilities.
+See the [tracing example](examples/tracing.rs) for a complete demonstration of using tracing with this library.
 
 ## License
 
