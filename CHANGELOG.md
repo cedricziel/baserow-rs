@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.1.0](https://github.com/cedricziel/baserow-rs/compare/v1.0.1...v1.1.0) (2024-12-26)
+
+
+### Features
+
+* add support for user_field_names ([abaacbe](https://github.com/cedricziel/baserow-rs/commit/abaacbeb9cf46b2dce4ace8cb98446a2573cf46c))
+
+
+### Bug Fixes
+
+* apply auto-mapping consistently ([abaacbe](https://github.com/cedricziel/baserow-rs/commit/abaacbeb9cf46b2dce4ace8cb98446a2573cf46c))
+* include user_field_names request option ([abaacbe](https://github.com/cedricziel/baserow-rs/commit/abaacbeb9cf46b2dce4ace8cb98446a2573cf46c))
+* include user_field_names request option ([#34](https://github.com/cedricziel/baserow-rs/issues/34)) ([abaacbe](https://github.com/cedricziel/baserow-rs/commit/abaacbeb9cf46b2dce4ace8cb98446a2573cf46c))
+
 ## [1.0.1](https://github.com/cedricziel/baserow-rs/compare/v1.0.0...v1.0.1) (2024-12-26)
 
 
