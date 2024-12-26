@@ -1,7 +1,7 @@
 use std::{error::Error, fs::File};
 
 use reqwest::{Client, Request, Response};
-use tracing::{debug, error, info, instrument, Instrument, span, Level};
+use tracing::{debug, error, info, instrument, span, trace, warn, Instrument, Level};
 
 use crate::{
     api::file::File as BaserowFile,
@@ -9,10 +9,10 @@ use crate::{
     BaserowTable, Configuration, TableField,
 };
 
-/// Helper trait for tracing HTTP requests
 #[async_trait::async_trait]
-pub(crate) trait RequestTracing {
+pub trait RequestTracing {
     /// Trace an HTTP request and its response
+    #[instrument(skip(self, client, request), fields(method = %request.method(), url = %request.url()), err)]
     async fn trace_request(&self, client: &Client, request: Request) -> reqwest::Result<Response> {
         let span = span!(
             Level::DEBUG,
@@ -22,14 +22,17 @@ pub(crate) trait RequestTracing {
         );
 
         async move {
-            debug!("Sending request");
+            debug!("Sending HTTP request");
+            trace!(headers = ?request.headers(), "Request headers");
             let response = client.execute(request).await?;
             let status = response.status();
 
             if status.is_success() {
-                info!(status = %status, "Request successful");
+                info!(status = %status, "HTTP request successful");
+                trace!(headers = ?response.headers(), "Response headers");
             } else {
-                error!(status = %status, "Request failed");
+                error!(status = %status, "HTTP request failed");
+                warn!(headers = ?response.headers(), "Failed response headers");
             }
 
             Ok(response)

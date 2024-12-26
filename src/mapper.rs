@@ -1,6 +1,7 @@
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::collections::HashMap;
+use tracing::{debug, instrument, warn};
 
 use crate::TableField;
 
@@ -68,6 +69,7 @@ impl TableMapper {
     ///
     /// # Returns
     /// * `Result<T, serde_json::Error>` - The deserialized struct or an error
+    #[instrument(skip(self, row), fields(row_keys = ?row.keys().collect::<Vec<_>>()), err)]
     pub fn deserialize_row<T>(&self, row: HashMap<String, Value>) -> Result<T, serde_json::Error>
     where
         T: DeserializeOwned,
@@ -82,6 +84,7 @@ impl TableMapper {
     ///
     /// # Returns
     /// * HashMap with field names as keys
+    #[instrument(skip(self, row), fields(row_keys = ?row.keys().collect::<Vec<_>>()))]
     pub fn convert_to_field_names(&self, row: HashMap<String, Value>) -> HashMap<String, Value> {
         let mut converted = HashMap::new();
         for (key, value) in row {
@@ -90,12 +93,20 @@ impl TableMapper {
                 .and_then(|id| id.parse::<u64>().ok())
             {
                 if let Some(name) = self.get_field_name(field_id) {
+                    debug!(field_id = field_id, field_name = ?name, "Converted field ID to name");
                     converted.insert(name, value);
                     continue;
+                } else {
+                    warn!(field_id = field_id, "No name mapping found for field ID");
                 }
             }
+            debug!(key = ?key, "Keeping original key");
             converted.insert(key, value);
         }
+        debug!(
+            field_count = converted.len(),
+            "Completed field name conversion"
+        );
         converted
     }
 
@@ -106,20 +117,29 @@ impl TableMapper {
     ///
     /// # Returns
     /// * HashMap with field IDs as keys
+    #[instrument(skip(self, row), fields(row_keys = ?row.keys().collect::<Vec<_>>()))]
     pub fn convert_to_field_ids(&self, row: HashMap<String, Value>) -> HashMap<String, Value> {
         let mut converted = HashMap::new();
         for (key, value) in row {
             if let Some(id) = self.get_field_id(&key) {
-                converted.insert(format!("field_{}", id), value);
+                let field_key = format!("field_{}", id);
+                debug!(field_name = ?key, field_id = id, "Converted field name to ID");
+                converted.insert(field_key, value);
                 continue;
             }
+            debug!(key = ?key, "Keeping original key");
             converted.insert(key, value);
         }
+        debug!(
+            field_count = converted.len(),
+            "Completed field ID conversion"
+        );
         converted
     }
 }
 
 impl FieldMapper for TableMapper {
+    #[instrument(skip(self, fields), fields(field_count = fields.len()))]
     fn map_fields(&mut self, fields: Vec<TableField>) {
         // Clear existing mappings
         self.ids_to_names.clear();
@@ -127,6 +147,7 @@ impl FieldMapper for TableMapper {
 
         // Add new mappings
         fields.iter().for_each(|field| {
+            debug!(field_id = field.id, field_name = ?field.name, "Mapping field");
             self.ids_to_names.insert(field.id, field.name.clone());
             self.names_to_ids.insert(field.name.clone(), field.id);
         });
@@ -134,12 +155,22 @@ impl FieldMapper for TableMapper {
         self.fields = fields;
     }
 
+    #[instrument(skip(self))]
     fn get_field_id(&self, name: &str) -> Option<u64> {
-        self.names_to_ids.get(name).copied()
+        let id = self.names_to_ids.get(name).copied();
+        if id.is_none() {
+            warn!(field_name = ?name, "Field name not found in mapping");
+        }
+        id
     }
 
+    #[instrument(skip(self))]
     fn get_field_name(&self, id: u64) -> Option<String> {
-        self.ids_to_names.get(&id).cloned()
+        let name = self.ids_to_names.get(&id).cloned();
+        if name.is_none() {
+            warn!(field_id = id, "Field ID not found in mapping");
+        }
+        name
     }
 
     fn get_fields(&self) -> Vec<TableField> {
