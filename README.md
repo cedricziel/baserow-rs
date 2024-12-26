@@ -131,6 +131,35 @@ let result = baserow.upload_file(file, "filename.png".to_string()).await?;
 let result = baserow.upload_file_via_url("https://example.com/image.png").await?;
 ```
 
+## Tracing Support
+
+This library is instrumented with the `tracing` crate to provide detailed insights into API operations. All key operations emit spans and events that can help you understand and debug your application's interaction with Baserow.
+
+### Instrumented Operations
+
+The following operations are instrumented with tracing:
+- HTTP requests and responses
+- Table operations (create, read, update, delete)
+- Authentication flows
+- Error paths with detailed context
+- Field mapping operations
+
+### Using Tracing in Your Application
+
+The library provides tracing instrumentation but does not configure any subscribers. This follows the best practice of letting applications control their logging configuration. To capture the tracing data in your application, configure a subscriber of your choice:
+
+```rust
+// Example using tracing-subscriber (add it to your application's dependencies)
+use tracing_subscriber::{fmt, EnvFilter};
+
+// Configure subscriber in your application's main function
+tracing_subscriber::fmt()
+    .with_env_filter(EnvFilter::from_default_env())
+    .init();
+```
+
+See the [tracing example](examples/tracing.rs) for a complete demonstration of using tracing with this library.
+
 ## License
 
 Apache 2.0

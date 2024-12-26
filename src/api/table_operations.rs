@@ -6,6 +6,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use reqwest::{header::AUTHORIZATION, Client, StatusCode};
+use tracing::{debug, error, info, instrument, warn, Instrument, span, Level};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::HashMap, error::Error, vec};
@@ -387,11 +388,14 @@ pub trait BaserowTableOperations {
 
 #[async_trait]
 impl BaserowTableOperations for BaserowTable {
+    #[instrument(skip(self), fields(table_id = ?self.id), err)]
     async fn auto_map(mut self) -> Result<BaserowTable, Box<dyn Error>> {
         let id = self.id.ok_or("Table ID is missing")?;
 
         let baserow = self.baserow.clone().ok_or("Baserow instance is missing")?;
+        debug!("Fetching table fields for mapping");
         let fields = baserow.table_fields(id).await?;
+        info!(field_count = fields.len(), "Successfully mapped table fields");
 
         let mut mapper = TableMapper::new();
         mapper.map_fields(fields.clone());
@@ -410,6 +414,7 @@ impl BaserowTableOperations for BaserowTable {
         self.query()
     }
 
+    #[instrument(skip(self, baserow), fields(table_id = ?self.id), err)]
     async fn get<T>(
         &self,
         baserow: Baserow,
@@ -491,7 +496,8 @@ impl BaserowTableOperations for BaserowTable {
             req = req.query(&[("user_field_names", user_field_names.to_string())]);
         }
 
-        let resp = req.send().await?;
+        debug!("Executing table query");
+        let resp = baserow.client.execute(req.build()?).await?;
 
         match resp.status() {
             StatusCode::OK => {
@@ -528,6 +534,7 @@ impl BaserowTableOperations for BaserowTable {
         }
     }
 
+    #[instrument(skip(self, data), fields(table_id = ?self.id, field_count = data.len()), err)]
     async fn create_one(
         self,
         data: HashMap<String, Value>,
@@ -567,7 +574,8 @@ impl BaserowTableOperations for BaserowTable {
             );
         }
 
-        let resp = req.json(&request_data).send().await?;
+        debug!("Creating new record");
+        let resp = baserow.client.execute(req.json(&request_data).build()?).await?;
 
         match resp.status() {
             StatusCode::OK => {
@@ -588,6 +596,7 @@ impl BaserowTableOperations for BaserowTable {
         }
     }
 
+    #[instrument(skip(self), fields(table_id = ?self.id, record_id = %id), err)]
     async fn get_one<T>(
         mut self,
         id: u64,
@@ -623,7 +632,8 @@ impl BaserowTableOperations for BaserowTable {
             );
         }
 
-        let resp = req.send().await?;
+        debug!("Fetching single record");
+        let resp = baserow.client.execute(req.build()?).await?;
 
         match resp.status() {
             StatusCode::OK => {
@@ -642,6 +652,7 @@ impl BaserowTableOperations for BaserowTable {
         }
     }
 
+    #[instrument(skip(self, data), fields(table_id = ?self.id, record_id = %id, field_count = data.len()), err)]
     async fn update(
         self,
         id: u64,
@@ -683,7 +694,8 @@ impl BaserowTableOperations for BaserowTable {
             );
         }
 
-        let resp = req.json(&request_data).send().await?;
+        debug!("Updating record");
+        let resp = baserow.client.execute(req.json(&request_data).build()?).await?;
 
         match resp.status() {
             StatusCode::OK => {
@@ -704,6 +716,7 @@ impl BaserowTableOperations for BaserowTable {
         }
     }
 
+    #[instrument(skip(self), fields(table_id = ?self.id, record_id = %id), err)]
     async fn delete(self, id: u64) -> Result<(), Box<dyn Error>> {
         let baserow = self.baserow.expect("Baserow instance is missing");
 
@@ -728,7 +741,8 @@ impl BaserowTableOperations for BaserowTable {
             );
         }
 
-        let resp = req.send().await?;
+        debug!("Deleting record");
+        let resp = baserow.client.execute(req.build()?).await?;
 
         match resp.status() {
             StatusCode::OK => Ok(()),
