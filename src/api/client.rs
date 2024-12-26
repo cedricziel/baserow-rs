@@ -9,7 +9,6 @@ use crate::{
     BaserowTable, Configuration, TableField,
 };
 
-/// Helper trait for tracing HTTP requests
 #[async_trait::async_trait]
 pub(crate) trait RequestTracing {
     /// Trace an HTTP request and its response

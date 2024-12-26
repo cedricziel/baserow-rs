@@ -1,8 +1,8 @@
 use baserow_rs::{api::client::BaserowClient, BaserowTableOperations, ConfigBuilder};
 use serde_json::Value;
 use std::collections::HashMap;
-use tracing::{debug, error, info, warn, Level};
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing::{debug, error, info, Level};
+use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() {

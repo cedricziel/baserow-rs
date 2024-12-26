@@ -39,7 +39,7 @@ use tracing_futures::Instrument;
 
 use api::{
     authentication::{LoginRequest, TokenResponse, User},
-    client::BaserowClient,
+    client::{BaserowClient, RequestTracing},
 };
 use error::{FileUploadError, TokenAuthError};
 use mapper::TableMapper;
@@ -246,7 +246,7 @@ impl BaserowClient for Baserow {
         let req = Client::new().post(url).json(&auth_request);
 
         debug!("Sending token authentication request");
-        let resp = req.send().await?;
+        let resp = self.trace_request(&self.client, req.build()?).await?;
 
         match resp.status() {
             StatusCode::OK => {
@@ -262,8 +262,9 @@ impl BaserowClient for Baserow {
             }
             status => {
                 let error_text = resp.text().await?;
-                error!(%status, error = %error_text, "Token authentication failed");
-                Err(TokenAuthError::AuthenticationFailed(error_text))
+                let error = TokenAuthError::AuthenticationFailed(error_text);
+                error.log();
+                Err(error)
             }
         }
     }
@@ -286,11 +287,14 @@ impl BaserowClient for Baserow {
         }
 
         debug!("Sending request to fetch table fields");
-        let resp = req.send().await?;
+        let resp = self.trace_request(&self.client, req.build()?).await?;
         match resp.status() {
             StatusCode::OK => {
                 let fields: Vec<TableField> = resp.json().await?;
-                info!(field_count = fields.len(), "Successfully retrieved table fields");
+                info!(
+                    field_count = fields.len(),
+                    "Successfully retrieved table fields"
+                );
                 debug!(?fields, "Retrieved field details");
                 Ok(fields)
             }
@@ -343,7 +347,9 @@ impl BaserowClient for Baserow {
             req = req.header(AUTHORIZATION, format!("Token {}", api_key));
         }
 
-        let resp = req.multipart(form).send().await;
+        let resp = self
+            .trace_request(&self.client, req.multipart(form).build()?)
+            .await;
 
         match resp {
             Ok(resp) => match resp.status() {
@@ -354,13 +360,15 @@ impl BaserowClient for Baserow {
                     Ok(json)
                 }
                 status => {
-                    error!(%status, "File upload failed with unexpected status code");
-                    Err(FileUploadError::UnexpectedStatusCode(status))
+                let error = FileUploadError::UnexpectedStatusCode(status);
+                error.log();
+                Err(error)
                 }
             },
             Err(e) => {
-                error!(error = %e, "File upload request failed");
-                Err(FileUploadError::UploadError(e))
+                let error = FileUploadError::UploadError(e);
+                error.log();
+                Err(error)
             }
         }
     }
@@ -390,7 +398,7 @@ impl BaserowClient for Baserow {
             req = req.header(AUTHORIZATION, format!("Token {}", api_key));
         }
 
-        let resp = req.send().await;
+        let resp = self.trace_request(&self.client, req.build()?).await;
 
         match resp {
             Ok(resp) => match resp.status() {
@@ -401,13 +409,15 @@ impl BaserowClient for Baserow {
                     Ok(json)
                 }
                 status => {
-                    error!(%status, "File upload via URL failed with unexpected status code");
-                    Err(FileUploadError::UnexpectedStatusCode(status))
+                let error = FileUploadError::UnexpectedStatusCode(status);
+                error.log();
+                Err(error)
                 }
             },
             Err(e) => {
-                error!(error = %e, "File upload via URL request failed");
-                Err(FileUploadError::UploadError(e))
+                let error = FileUploadError::UploadError(e);
+                error.log();
+                Err(error)
             }
         }
     }

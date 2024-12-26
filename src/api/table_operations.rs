@@ -1,5 +1,5 @@
 use crate::{
-    api::client::BaserowClient,
+    api::client::{BaserowClient, RequestTracing},
     filter::{Filter, FilterTriple},
     mapper::{FieldMapper, TableMapper},
     Baserow, BaserowTable, OrderDirection,
@@ -453,12 +453,12 @@ impl BaserowTableOperations for BaserowTable {
         if baserow.configuration.jwt.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("JWT {}", &baserow.configuration.database_token.unwrap()),
+                format!("JWT {}", &baserow.configuration.database_token.as_ref().unwrap()),
             );
         } else if baserow.configuration.database_token.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.database_token.unwrap()),
+                format!("Token {}", &baserow.configuration.database_token.as_ref().unwrap()),
             );
         }
 
@@ -500,7 +500,7 @@ impl BaserowTableOperations for BaserowTable {
         }
 
         debug!("Executing table query");
-        let resp = baserow.client.execute(req.build()?).await?;
+        let resp = baserow.trace_request(&baserow.client, req.build()?).await?;
 
         match resp.status() {
             StatusCode::OK => {
@@ -568,20 +568,17 @@ impl BaserowTableOperations for BaserowTable {
         if baserow.configuration.jwt.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("JWT {}", &baserow.configuration.jwt.unwrap()),
+                format!("JWT {}", &baserow.configuration.jwt.as_ref().unwrap()),
             );
         } else if baserow.configuration.database_token.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.database_token.unwrap()),
+                format!("Token {}", &baserow.configuration.database_token.as_ref().unwrap()),
             );
         }
 
         debug!("Creating new record");
-        let resp = baserow
-            .client
-            .execute(req.json(&request_data).build()?)
-            .await?;
+        let resp = baserow.trace_request(&baserow.client, req.json(&request_data).build()?).await?;
 
         match resp.status() {
             StatusCode::OK => {
@@ -629,17 +626,17 @@ impl BaserowTableOperations for BaserowTable {
         if baserow.configuration.jwt.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("JWT {}", &baserow.configuration.jwt.unwrap()),
+                format!("JWT {}", &baserow.configuration.jwt.as_ref().unwrap()),
             );
         } else if baserow.configuration.database_token.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.database_token.unwrap()),
+                format!("Token {}", &baserow.configuration.database_token.as_ref().unwrap()),
             );
         }
 
         debug!("Fetching single record");
-        let resp = baserow.client.execute(req.build()?).await?;
+        let resp = baserow.trace_request(&baserow.client, req.build()?).await?;
 
         match resp.status() {
             StatusCode::OK => {
@@ -691,20 +688,17 @@ impl BaserowTableOperations for BaserowTable {
         if baserow.configuration.jwt.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("JWT {}", &baserow.configuration.jwt.unwrap()),
+                format!("JWT {}", &baserow.configuration.jwt.as_ref().unwrap()),
             );
         } else if baserow.configuration.database_token.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.database_token.unwrap()),
+                format!("Token {}", &baserow.configuration.database_token.as_ref().unwrap()),
             );
         }
 
         debug!("Updating record");
-        let resp = baserow
-            .client
-            .execute(req.json(&request_data).build()?)
-            .await?;
+        let resp = baserow.trace_request(&baserow.client, req.json(&request_data).build()?).await?;
 
         match resp.status() {
             StatusCode::OK => {
@@ -741,17 +735,17 @@ impl BaserowTableOperations for BaserowTable {
         if baserow.configuration.jwt.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("JWT {}", &baserow.configuration.jwt.unwrap()),
+                format!("JWT {}", &baserow.configuration.jwt.as_ref().unwrap()),
             );
         } else if baserow.configuration.database_token.is_some() {
             req = req.header(
                 AUTHORIZATION,
-                format!("Token {}", &baserow.configuration.database_token.unwrap()),
+                format!("Token {}", &baserow.configuration.database_token.as_ref().unwrap()),
             );
         }
 
         debug!("Deleting record");
-        let resp = baserow.client.execute(req.build()?).await?;
+        let resp = baserow.trace_request(&baserow.client, req.build()?).await?;
 
         match resp.status() {
             StatusCode::OK => Ok(()),
