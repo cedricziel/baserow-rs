@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.0.0](https://github.com/cedricziel/baserow-rs/compare/v1.2.0...v2.0.0) (2024-12-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* cleanup & remove old api
+
+### Bug Fixes
+
+* apply tracing ([#43](https://github.com/cedricziel/baserow-rs/issues/43)) ([31f3d10](https://github.com/cedricziel/baserow-rs/commit/31f3d10b113834dadfe4efeda80ff9e6096faae3))
+* remove unused package key ([31f3d10](https://github.com/cedricziel/baserow-rs/commit/31f3d10b113834dadfe4efeda80ff9e6096faae3))
+
+
+### Miscellaneous Chores
+
+* cleanup & remove old api ([31f3d10](https://github.com/cedricziel/baserow-rs/commit/31f3d10b113834dadfe4efeda80ff9e6096faae3))
+
 ## [1.2.0](https://github.com/cedricziel/baserow-rs/compare/v1.1.2...v1.2.0) (2024-12-26)
 
 
