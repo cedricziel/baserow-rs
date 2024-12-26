@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.2](https://github.com/cedricziel/baserow-rs/compare/v2.0.1...v2.0.2) (2024-12-26)
+
+
+### Bug Fixes
+
+* map query parameters as well ([#51](https://github.com/cedricziel/baserow-rs/issues/51)) ([9b22a61](https://github.com/cedricziel/baserow-rs/commit/9b22a61eb42ed34af800338a4b877da437f60f50))
+
 ## [2.0.1](https://github.com/cedricziel/baserow-rs/compare/v2.0.0...v2.0.1) (2024-12-26)
 
 
