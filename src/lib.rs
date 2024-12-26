@@ -792,7 +792,7 @@ mod tests {
 
         assert!(result.is_ok());
         let response = result.unwrap();
-        assert_eq!(response.count, 1);
+        assert_eq!(response.count, Some(1));
         assert_eq!(
             response.results[0]["field_1"],
             Value::String("test".to_string())
@@ -842,7 +842,7 @@ mod tests {
 
         assert!(result.is_ok());
         let response = result.unwrap();
-        assert_eq!(response.count, 1);
+        assert_eq!(response.count, Some(1));
         assert_eq!(
             response.results[0]["field_1"],
             Value::String("test".to_string())
@@ -892,7 +892,7 @@ mod tests {
 
         assert!(result.is_ok());
         let response = result.unwrap();
-        assert_eq!(response.count, 3);
+        assert_eq!(response.count, Some(3));
         assert_eq!(response.next, Some("http://example.com/next".to_string()));
         assert_eq!(
             response.previous,
@@ -949,7 +949,7 @@ mod tests {
 
         assert!(result.is_ok());
         let response = result.unwrap();
-        assert_eq!(response.count, 1);
+        assert_eq!(response.count, Some(1));
         assert_eq!(
             response.results[0]["User Name"],
             Value::String("test".to_string())

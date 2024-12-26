@@ -16,7 +16,7 @@ use std::{collections::HashMap, error::Error, vec};
 #[derive(Deserialize, Serialize, Debug)]
 pub struct RowsResponse {
     /// Total count of records that match the query criteria, not just the current page
-    pub count: i32,
+    pub count: Option<i32>,
     /// URL for the next page of results, if available
     pub next: Option<String>,
     /// URL for the previous page of results, if available
@@ -32,7 +32,7 @@ pub struct RowsResponse {
 #[derive(Deserialize, Serialize, Debug)]
 pub struct TypedRowsResponse<T> {
     /// Total count of records that match the query criteria, not just the current page
-    pub count: i32,
+    pub count: Option<i32>,
     /// URL for the next page of results, if available
     pub next: Option<String>,
     /// URL for the previous page of results, if available
