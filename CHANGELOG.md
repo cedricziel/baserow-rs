@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/cedricziel/baserow-rs/compare/v1.1.1...v1.1.2) (2024-12-26)
+
+
+### Bug Fixes
+
+* add size ([#38](https://github.com/cedricziel/baserow-rs/issues/38)) ([697bee9](https://github.com/cedricziel/baserow-rs/commit/697bee9790d0c423d15bdd7ded71b3feb111851e))
+
 ## [1.1.1](https://github.com/cedricziel/baserow-rs/compare/v1.1.0...v1.1.1) (2024-12-26)
 
 
