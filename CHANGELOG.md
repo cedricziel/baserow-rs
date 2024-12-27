@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.5](https://github.com/cedricziel/baserow-rs/compare/v2.0.4...v2.0.5) (2024-12-27)
+
+
+### Bug Fixes
+
+* thumbnail dimensions can be null ([#57](https://github.com/cedricziel/baserow-rs/issues/57)) ([2f77cb6](https://github.com/cedricziel/baserow-rs/commit/2f77cb64fc16c3960ecf61c4a588b01a023feabd))
+
 ## [2.0.4](https://github.com/cedricziel/baserow-rs/compare/v2.0.3...v2.0.4) (2024-12-27)
 
 
