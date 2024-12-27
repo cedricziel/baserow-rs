@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.4](https://github.com/cedricziel/baserow-rs/compare/v2.0.3...v2.0.4) (2024-12-27)
+
+
+### Bug Fixes
+
+* dimensions can be null ([#55](https://github.com/cedricziel/baserow-rs/issues/55)) ([211c67e](https://github.com/cedricziel/baserow-rs/commit/211c67ec249db6ddf0b5cbe7a7fdbbe68e97f6ba))
+
 ## [2.0.3](https://github.com/cedricziel/baserow-rs/compare/v2.0.2...v2.0.3) (2024-12-26)
 
 
