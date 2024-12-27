@@ -39,13 +39,13 @@ mod tests {
             thumbnails: Some(Thumbnails {
                 tiny: Thumbnail {
                     url: "https://example.com/tiny.jpg".to_string(),
-                    width: 100,
-                    height: 100,
+                    width: None,
+                    height: Some(100),
                 },
                 small: Thumbnail {
                     url: "https://example.com/small.jpg".to_string(),
-                    width: 200,
-                    height: 200,
+                    width: Some(200),
+                    height: Some(200),
                 },
             }),
             name: "file.jpg".to_string(),
