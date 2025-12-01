@@ -20,6 +20,6 @@ thiserror = "2.0.17"
 mime_guess = "2.0.5"
 
 [dev-dependencies]
-mockito = "1.7.0"
+mockito = "1.7.1"
 tokio = { version = "1", features = ["macros", "rt"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
